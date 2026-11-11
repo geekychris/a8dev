@@ -1,0 +1,7 @@
+{
+  "title": "Lunar Rider",
+  "ready": "lunar: ready",
+  "description": "Drive a moon buggy over craters, rocks and mines; shoot UFOs and meteors. 26 zones a loop.",
+  "controls": "Stick: L/R speed, UP jump, FIRE shoot",
+  "picture": "screenshots/play.png"
+}
