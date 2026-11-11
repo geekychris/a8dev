@@ -186,7 +186,7 @@ static void emit(World *w, int8_t type, int16_t x, int16_t y, int8_t id, int8_t 
    (41943/n, Q16; n = 1: 20972, Q15), V -> 1/256 P (20972/n, Q9), gravity
    PB_GRAVITY_STEP / n and % n */
 #pragma rodata-name (push, "TABRO")    /* under the ROM with the table: bank 0 is full */
-static const int16_t sub_tab[41][6] = {
+const int16_t sub_tab[41][6] = {
     { 0, 0, 0, 0, 0, 0 },
     { 32767, 32767, 20972, 20972, 240, 0 },
     { 32767, 25600, 20971, 10486, 120, 0 },
@@ -233,8 +233,8 @@ static const int16_t sub_tab[41][6] = {
 
 
 int16_t sub_kpos;                       /* also zmath.asm's advance() */
-static int16_t sub_acc_up, sub_acc_down, sub_kang;
-static uint8_t sub_n1;
+int16_t sub_acc_up, sub_acc_down, sub_kang;      /* (physasm.s's world_step sets them) */
+uint8_t sub_n1;
 
 void flipper_step(World *w, Flipper *f)    /* (physasm.s's substeps calls it) */
 {
@@ -270,11 +270,7 @@ void flipper_step(World *w, Flipper *f)    /* (physasm.s's substeps calls it) */
     }
 }
 
-static int8_t flipper_moving(const World *w, const Flipper *f)
-{
-    int16_t target = (f->held && w->flipper_power) ? f->d.up : f->d.rest;
-    return f->w != 0 || f->ang != target;
-}
+/* (flipper_moving(): physasm.s's world_step) */
 
 /* port: move_ball's fast path is in assembly (physasm.s): the speed cap
  * test, x += v dt for both axes (advance()), the grid cell, and for each
@@ -412,78 +408,25 @@ extern Ball *sub_bl[PB_MAX_BALLS];
    exact for |v| < 32768 */
 extern int16_t __fastcall__ div625(int16_t v);  /* physasm.s: the same, in assembly */
 
-void pb_world_step(World *w)
-{
-    int16_t fast = 0, tip = 0, n, k, done = 0, gq, gr;
-    int8_t i, j, live = 0, nb = w->nballs, nf = w->nflip;
-    Ball *b, *b2;
-    Flipper *f;
+/* One fixed step is physasm.s's world_step (port: the C it was, in
+   assembly: the balls' rolling resistance and speed, the moving flippers
+   and their reach, the substeps' count and constants, the substeps, the
+   balls on a ramp, in the saucer and the lane); here, the spinners. */
+#include <stddef.h>
+typedef char wcheck1[offsetof(World, nballs) == 106 ? 1 : -1];   /* physasm.s's offsets */
+typedef char wcheck2[offsetof(World, nflip) == 185 ? 1 : -1];
+typedef char wcheck3[offsetof(World, spin) == 186 ? 1 : -1];
+typedef char wcheck4[offsetof(World, flipper_power) == 532 ? 1 : -1];
+typedef char wcheck5[offsetof(World, substeps) == 534 ? 1 : -1];
+typedef char wcheck6[sizeof(Ball) == 26 && sizeof(Flipper) == 26 ? 1 : -1];
+typedef char wcheck7[offsetof(Ball, nocatch) == 21 && offsetof(Ball, hold) == 19 ? 1 : -1];
+typedef char wcheck8[offsetof(Flipper, held) == 19 && offsetof(Flipper, w) == 17 ? 1 : -1];
+typedef char wcheck9[offsetof(Table, nspin) == 17 ? 1 : -1];
 
-    /* port: pointers through the arrays (cc65 multiplies for each index) */
-    for (i = 0, b = w->balls; i < nb; i++, b++) {
-        if (b->nocatch > 0) b->nocatch--;
-        if (b->state != BS_PLAY) continue;
-        live++;
-        b->vx -= div625(b->vx); b->vy -= div625(b->vy);       /* rolling resistance, 0.04 h (port: 25 Hz) */
-        {   /* port: |v| from above without a square root: max + min / 2 (at most
-               12% over: a substep more now and then) */
-            uint16_t ax = (uint16_t)ABS16(b->vx), ay = (uint16_t)ABS16(b->vy), s;
-            s = ax > ay ? ax + (ay >> 1) : ay + (ax >> 1);
-            s += PB_GRAVITY_STEP;
-            if (s > 32767) s = 32767;
-            if ((int16_t)s > fast) fast = (int16_t)s;
-        }
-    }
-    sub_nfl = 0;
-    for (i = 0, f = w->flip; i < nf; i++, f++)
-        if (flipper_moving(w, f)) {
-            /* port: the tip's speed counts only when a ball could reach the
-               flipper this step (at most 7000 mm/s x 1/25 s = 280 mm, 4480 P,
-               beyond its reach): far from the balls a flip costs no substeps */
-            int16_t reach = f->d.len + f->d.r1 + PB_R + 4480;
-            sub_fl[sub_nfl++] = f;       /* at rest now, at rest all step: substeps() leaves it out */
-            for (j = 0, b = w->balls; j < nb; j++, b++)
-                if (b->state == BS_PLAY && ABS16(b->x - f->d.px) < reach && ABS16(b->y - f->d.py) < reach) break;
-            if (j < nb) {
-                int16_t tp = (int16_t)(mul16(f->d.len + f->d.r2, 21) >> 1);   /* 42 rad/s, in V */
-                if (tp > tip) tip = tp;
-            }
-        }
-    /* port: no substep moves anything more than the ball's radius (the
-       original: a quarter at 120 Hz): (fast + tip) * 0.16 P a step, 216 P:
-       n = (fast + tip) / 1350, by subtraction; the rest from tables (no
-       divisions) */
-    {
-        uint16_t sp = (uint16_t)fast + (uint16_t)tip;
-        n = 1;
-        if (live) while (sp > 1350 && n < 40) { sp -= 1350; n++; }
-    }
-    sub_n1 = n == 1;
-    w->substeps = (int8_t)n;
-    sub_acc_up = sub_tab[n][0];                            /* 9000 rad/s^2 / 25 / n, W (port: 25 Hz) */
-    sub_acc_down = sub_tab[n][1];                          /* 5000 rad/s^2 */
-    sub_kang = sub_tab[n][2];                              /* W -> A for the substep, Q16 */
-    sub_kpos = sub_tab[n][3];                              /* V -> 1/256 P for the substep, Q9 */
-    gq = sub_tab[n][4];                                    /* gravity a substep: PB_GRAVITY_STEP / n */
-    gr = sub_tab[n][5];                                    /*   and the remainder */
-    if (mb_t != w->t) pb_mb_prepare(w);                   /* port: bank 2 */
-    /* port: the substeps in physasm.s (substeps()): for each, the moving
-       flippers' flipper_step, move_ball for each ball in play with gravity
-       gq (+ 1 for the first gr: adds up to the step's, no divide), the
-       balls against each other (pb_hit_balls, bank 2) */
-    sub_w = w;
-    sub_n = (uint8_t)n;
-    sub_gq = gq;
-    sub_gr = (uint8_t)gr;
-    sub_nb = (uint8_t)nb;
-    for (i = 0, b = w->balls; i < nb; i++, b++) sub_bl[i] = b;
-    substeps();
-    for (i = 0, b = w->balls; i < nb; i++, b++) {
-        if (b->state == BS_RAMP) pb_ramp_step(w, b);    /* port: bank 2 (pb_phys2.c) */
-        else if (b->state == BS_SAUCER) { b->hold--; b->vx = b->vy = 0; }
-        else if (b->state == BS_LANE) { b->vx = b->vy = 0; }
-    }
-    /* the spinners keep turning on their own and slow down */
+/* the spinners keep turning on their own and slow down (called when one turns) */
+void spinners(World *w)
+{
+    int8_t i;
     for (i = 0; i < w->t->nspin; i++) {
         Spinner *sp = &w->spin[i];
         if (sp->w <= 0) continue;
@@ -493,4 +436,3 @@ void pb_world_step(World *w)
         while (sp->ang >= PI_A) { sp->ang -= PI_A; emit(w, EV_SPIN, w->t->spin[i].x, w->t->spin[i].y, i, 0, 0, 0); }
     }
 }
-
