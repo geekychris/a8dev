@@ -1,0 +1,7 @@
+{
+  "title": "Bullion Dash",
+  "ready": "bullion: ready",
+  "description": "Grab all the gold, dig holes to trap the guards, then climb out: 150 levels and an editor.",
+  "controls": "Joystick runs/climbs, FIRE+LEFT/RIGHT digs, E editor",
+  "picture": "screenshots/play.png"
+}
