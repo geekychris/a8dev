@@ -20,6 +20,24 @@ Things that cost time, so they don't again.
 - `ld65` map files list segments twice (per module and in "Segment list");
   parse only lines whose start column is 6 hex digits.
 
+## cc65 miscompiles (known)
+
+- **A ternary of constant pointers used for a store loses the pointer**
+  (cc65 2.19 git eebf54a, our pinned toolchain, at any -O; 2.18 is fine):
+
+  ```c
+  #define MAP0 ((uint8_t *)0xA400)
+  #define MAP1 ((uint8_t *)0xAA00)
+  (b ? MAP1 : MAP0)[i] = v;        /* WRONG CODE: stores to b + i */
+  ```
+
+  The generated code uses `b` itself as the base address; neither $A400 nor
+  $AA00 appears. In planet_chomp it wrote into the 6502 stack page and
+  crashed (found by a8-big). Workaround: put the pointer in a variable first
+  (`uint8_t *m = b ? MAP1 : MAP0; m[i] = v;`; checked: it loads $AA/$A4) or
+  index a `static uint8_t * const maps[2]` table. Upstream:
+  https://github.com/cc65/cc65/issues/3035 (a8-big added this case).
+
 ## Memory
 
 - cc65's `atari` crt0 starts the C stack at MEMTOP, which with BASIC off is
