@@ -25,7 +25,7 @@ browser ─────HTTP────> devbench ──┼──JSON lines─�
 |---|---|
 | projects | `list_projects`, `build(project, clean)`, `new_project(name)`, `run_tests(project)` |
 | sessions | `emu_boot(project, window, machine)`, `emu_attach(pid)`, `emu_sessions`, `emu_close`, `emu_status` |
-| machine | `emu_load`, `emu_reset(hard)`, `emu_reload`, `emu_power_cycle`, `emu_reboot`, `emu_machine(130xe/800xl/800/xegs)` |
+| machine | `emu_load`, `emu_reset(hard)`, `emu_reload`, `emu_power_cycle`, `emu_reboot`, `emu_machine(130xe/800xl/65xe/600xl/1200xl/800/400/320xe)` |
 | time | `emu_run(frames)`, `emu_run_until(text, max_frames)`, `emu_run_to(frame, cycle)`, `emu_position`, `emu_pause`, `emu_resume(turbo)` |
 | log | `emu_log(all)` |
 | screen | `emu_look(border, scale)`, `emu_screenshot(path)`, `emu_screen_hash`, `emu_record_video(path)`, `emu_record_gif` |

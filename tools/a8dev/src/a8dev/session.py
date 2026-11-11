@@ -103,7 +103,7 @@ class Session:
                              "record_video(path .gif|.mp4|dir, frames=100, every=1, scale=1)"),
             "memory_map": (lambda: e.memory_map(), "PORTB: OS ROM, BASIC, self test, 130XE bank mapped for the CPU / ANTIC"),
             "machine": (lambda name=None: (e.set_machine(name), e.status())[1] if name else {"machine": e.machine},
-                        "machine(name): 130xe 800xl 800 xegs"),
+                        "machine(name): 130xe 800xl 65xe 600xl 1200xl 800 400 320xe"),
             "pause": (lambda: (e.pause(), e.status())[1], "stop free-running"),
             "resume": (lambda turbo=False: (e.resume(turbo), e.status())[1], "resume(turbo=false): free-run"),
             "run": (lambda frames=1: e.run(frames), "run(frames): advance N frames (stops at breakpoints)"),

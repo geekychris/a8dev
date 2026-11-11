@@ -26,6 +26,7 @@ with Emulator() as emu:
     emu.load(m["image"])
     sel = arcade.menu_ready(emu, 3000)
     check("disk boots into the menu", sel == 0)
+    emu.run(2)                                 # the last frame was drawn mid-update
     img = emu.screenshot(ROOT / "build" / "arcade" / "menu.png")
     check("menu drawn", len(img.getcolors(1 << 16) or []) >= 3)
     check("choose hello and start it", arcade.menu_choose(emu, hello, len(gs), sel=sel))

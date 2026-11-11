@@ -177,7 +177,7 @@ def emu_boot(project: str = "", window: bool = False, machine: str = "") -> str:
     """Start an emulator session with a project (or a .xex/.atr/.car/.a8s path).
     Headless sessions are paused: they only advance when you run/press. window=True opens
     a window the user can watch and play (free-running). machine: 130xe (default, 128K),
-    800xl, 800 (48K 400/800), xegs. Empty project = just the OS."""
+    800xl, 800 (48K 400/800),. Empty project = just the OS."""
     global _session
     if _session is not None and _session.proc is not None:
         _session.close(stop=True)
@@ -257,7 +257,7 @@ def emu_reboot() -> str:
 
 @server.tool()
 def emu_machine(name: str) -> str:
-    """Switch machine: 130xe 800xl 800 xegs (resets)."""
+    """Switch machine: 130xe 800xl 65xe 600xl 1200xl 800 400 320xe (resets)."""
     return _j(_call("machine", name=name))
 
 

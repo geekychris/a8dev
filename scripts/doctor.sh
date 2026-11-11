@@ -22,6 +22,7 @@ else
   fail "docker not installed or not running, and no cc65 on PATH" "start Docker Desktop / Rancher / OrbStack / colima"
 fi
 
+for t in autoconf automake; do have "$t" && ok "$t" || fail "$t missing (needed to build Atari800)" "brew install autoconf automake / sudo apt install autoconf automake"; done
 have sdl2-config && ok "SDL2 $(sdl2-config --version)" \
   || fail "SDL2 missing (window mode unavailable; headless works)" "brew install sdl2 / sudo apt install libsdl2-dev, then scripts/build-emulator.sh"
 

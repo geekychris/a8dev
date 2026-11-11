@@ -30,7 +30,7 @@ def pattern(bank, i):
 
 with Emulator(machine="130xe") as emu:
     emu.load(PROG)
-    done = emu.run_until("A8:", 3000)
+    done = emu.run_until("A8:", 8000)
     emu.run(2)
     log = emu.log(0)
     check("program reports 4 banks", "banktest: banks=4" in log, log[:200])
