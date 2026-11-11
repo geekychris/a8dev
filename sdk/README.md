@@ -26,6 +26,8 @@ Changes to `sdk/` go through a PR that keeps `./a8 selftest` green.
 
 ## Changelog
 
+- **1.2.1**: a8_log (printf) split from a8_log_s/a8_log_u/a8_done/a8_fail: using only
+  those no longer links vsnprintf (~1.3K).
 - **1.2.0**: `sound_tick` in asm (21 cycles idle, ~200 busy; was ~1,900 / 2,800 in C),
   same API and output (projects/soundtest); optional `LOWRAM` segment $0C00-$1FFF.
 - **1.1.0**: project.mk `EXTRA_SRC_DIRS` (compile shared source directories).
