@@ -9,6 +9,9 @@
    runner takes the gold next to him and the guard catches him; five lives,
    game over, initials (BOT), the title with the table.
 3. Level 121 has five guards: the fourth and fifth are missiles.
+4. The repaired levels (REPAIRED_LEVELS.md): a game from level 148 plays
+   148, 149, 150, 1 and 2 to the exit, the guards taken out, along the
+   route search's moves (tools/bdlevels.py).
 The session is recorded and replayed twice (every frame hash must match),
 and the XEX runs on a 64K 800XL (the levels load at $A000 behind a
 BASIC-off segment). Screenshots go to screenshots/ with --shots (build/shots otherwise).
@@ -196,6 +199,92 @@ with Emulator() as e:                       # five guards: players 1-3, missiles
     n = e.read_mem("gs", GS_PLAYER + 11 + 14 * 5 + 1)[-1]
     check("level 121: five guards", ok and n == 5, str(n))
     e.screenshot(SHOTS / "level121.png", scale=2)
+
+sys.path.insert(0, str(HERE / "tools"))
+import bdlevels as bd  # noqa: E402
+
+DIRS = {"left": "LEFT", "right": "RIGHT", "up": "UP", "down": "DOWN", "fall": None}
+
+
+def play_route(e, lv):
+    """the repaired level lv to the exit, the guards taken out, along the
+    route search's moves (tools/bdlevels.py); True when it's complete"""
+    if not e.run_until("bullion: state=playing", 400):
+        return "no level"
+    e.run(2)
+    gs = bytearray(e.read_mem("gs", 98 + 448))
+    base = e.addr("gs")
+    for i in range(5):                                   # the guards out
+        e.poke(base + GS_PLAYER + 11 + 14 * i + 12, 0)
+    e.poke(base + GS_PLAYER + 11 + 14 * 5, 0)
+    g = [[gs[98 + y * 28 + x] for x in range(28)] for y in range(16)]
+    px, py, gx, gy = player(e)
+    g[gy][gx] = bd.P
+    order, brk = bd.plan(g)
+    if order is None:
+        return f"no route: {brk}"
+    mark = e.log_end()
+    runs = []                                            # the moves, straight runs merged
+    for kind, cell in bd.route(g, order):
+        if runs and runs[-1][0] == kind:
+            runs[-1][1] = cell
+        else:
+            runs.append([kind, cell])
+    # the game reads the stick once a loop and may run 2-3 logic ticks in
+    # it (catching up after a slow frame), so the player can pass the cell
+    # where the key should have been let go: hold to the run's end, then
+    # step back to the cell's edge if he went past it
+    for kind, (tx, ty) in runs:
+        tpx, tpy = tx * 10, ty * 14
+
+        def past(px, py):
+            return {"left": px <= tpx, "right": px >= tpx, "up": py <= tpy,
+                    "down": py >= tpy, "fall": py >= tpy}[kind]
+        e.release()
+        if DIRS[kind]:
+            e.hold(DIRS[kind])
+        for _ in range(400):
+            e.run(1)
+            px, py, x, y = player(e)
+            if past(px, py) or f"level {lv} complete" in e.log_text(mark):
+                break
+        else:
+            e.release()
+            return f"stuck going {kind} to {(tx, ty)} at {(x, y)}"
+        e.release()
+        pg = bd.plain(g)
+        if pg[ty][tx] not in (bd.L, bd.R) and not bd.support(pg, tx, ty):
+            continue                                     # (he falls from there: the next run)
+        for _ in range(40):                              # (back to the cell's edge)
+            e.run(1)
+            px, py, x, y = player(e)
+            if (px, py) == (tpx, tpy) or f"level {lv} complete" in e.log_text(mark):
+                break
+            if kind == "fall":
+                continue
+            key = ("LEFT" if px > tpx else "RIGHT") if px != tpx else ("UP" if py > tpy else "DOWN")
+            e.press(key, hold_frames=1, release_frames=1)
+        else:
+            return f"not on {(tx, ty)} after going {kind}: at {(px, py)}"
+    e.release()
+    e.hold("UP")
+    ok = e.run_until(f"bullion: level {lv} complete", 60) or f"level {lv} complete" in e.log_text(mark)
+    e.release()
+    return True if ok else "the route ended without the win"
+
+
+with Emulator() as e:                       # the repaired levels (REPAIRED_LEVELS.md)
+    e.load(PROG)
+    e.run_until("bullion: ready", 900)
+    e.write_mem("start_level", bytes([148, 0]))
+    e.press("FIRE")
+    for lv in (148, 149, 150, 1, 2):        # (after 150: level 1)
+        r = play_route(e, lv)
+        check(f"repaired level {lv}: the route search's moves win it", r is True, str(r))
+        if r is not True:
+            break
+        if lv == 150:
+            e.screenshot(SHOTS / "level150-won.png", scale=2)
 
 with Emulator(machine="800xl") as e:
     e.load(PROG)

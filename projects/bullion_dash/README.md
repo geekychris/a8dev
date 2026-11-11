@@ -21,7 +21,7 @@ editor.
 |---|---|
 | run, climb, hang | joystick (or W/A/S/D, arrow keys) |
 | dig | FIRE (or SPACE) held + left / right: the brick below-left / below-right |
-| give up a life | ESC (some levels can't be finished, see below) |
+| give up a life | ESC (to restart a level) |
 | title | LEFT / RIGHT or SELECT choose the first level, FIRE / START starts, E opens the editor |
 | editor | joystick moves, FIRE puts the tile, Z / X choose it, RETURN test-plays, S / L keep / get the level, ESC ends |
 | initials | type three letters, or UP/DOWN + FIRE, after a high score |
@@ -36,7 +36,8 @@ bricks growing back after 150 frames, guards that take a step every third
 frame along a breadth-first path to the player, fall into holes, steal gold
 (30%) and drop it, die in a regrown brick and come back on the top row,
 hidden ladders shown when all the gold is in, 100 a gold, 1000 a level,
-five lives. The 150 levels are the original's (`src/levels.txt`). Changes
+five lives. The 150 levels are the original's, repaired so they can be won
+(`src/levels.txt`, below). Changes
 are marked `port:` in the source; the Spectrum port's (see its README) and:
 
 - the guards' random moves use the SDK's xorshift instead of the original's
@@ -48,10 +49,28 @@ are marked `port:` in the source; the Spectrum port's (see its README) and:
   the pathfinding flags of a whole level from tables
 - a high-score table (the original has none)
 
-The original's levels can't be won (the Spectrum port's
-[ORIGINAL_BUGS.md](ORIGINAL_BUGS.md) has the evidence: on 149 of 150 a route
-search can't reach all the gold, or row 0). This port keeps them as they
-are, so the test clears a level built in the editor.
+As released, the original's levels can't be won. On 149 of 150, a route
+search can't reach all the gold, or row 0 ([ORIGINAL_BUGS.md](ORIGINAL_BUGS.md)).
+
+The levels are now repaired, the same in every version (the Amiga
+original's `tools/repair_levels.py`). Each fix is the smallest edit that
+works, and every level keeps its layout:
+- a new or longer ladder;
+- a hidden ladder for the way out;
+- 1042 cells in all, 6.9 a level.
+
+[REPAIRED_LEVELS.md](REPAIRED_LEVELS.md) lists every change, and
+`src/levels_original.txt` keeps the levels as released.
+
+The test plays levels 148-150, 1 and 2 to the exit in the emulator, with
+the guards taken out, along the route search's moves (`tools/bdlevels.py`).
+Below, level 150 is won, with all 13 gold in and the runner at the top of
+the exit ladder:
+
+![level 150, won](screenshots/level150-won.png)
+
+The guards are still faster than the runner, so the main game's test
+loses its lives to them.
 
 ## The Atari version
 
@@ -66,12 +85,14 @@ are, so the test clears a level built in the editor.
   and 3's), the fifth (on the few levels that have one) missile 1 at
   double width. Positions are the original's pixels scaled by 4/10 across
   and 8/14 down; no sprite is ever drawn into the playfield.
-- **150 levels in 7.9 KB** with the Spectrum SDK's `gridpack` (a binary
+- **150 levels in 8.1 KB** with the Spectrum SDK's `gridpack` (a binary
   arithmetic coder with fixed probabilities by the tile before and above;
-  `tools/gridpack.py`), unpacked at the start of a level.
+  `tools/gridpack.py`, `tools/pack_levels.py`), unpacked at the start of a
+  level.
 - **Memory.** `bullion.cfg`: the XEX first runs a tiny segment that switches
-  BASIC (and the screen) off, then loads the levels into `$A000-$BED3`, then
-  the program `$2000-$8E7C`. The screen's lines and display lists are at
+  BASIC (and the screen) off, then loads the levels' bits into
+  `$A000-$BFC7`, then the program `$2000-$8F21` (with the levels' other
+  tables). The screen's lines and display lists are at
   `$9000`, the C stack (512 bytes; the locals are static) at `$9600`, the
   character set's 84 characters at `$9800` under the players (`$9B00`).
   No 130XE banks: it runs on a 64K 800XL (the test boots it there) and on a
