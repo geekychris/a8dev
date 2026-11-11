@@ -1,0 +1,7 @@
+{
+  "title": "Rotoball",
+  "ready": "roto: ready",
+  "description": "Split-screen ball sport: carry the ball over the other goal line. 1 player v the CPU, or 2.",
+  "controls": "Stick drive+strafe, port 2: player 2",
+  "picture": "screenshots/carry.png"
+}
