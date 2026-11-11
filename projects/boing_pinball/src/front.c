@@ -263,7 +263,19 @@ static void draw_balls(void)
         if (b->state == BS_DRAINED) continue;
         sy = TABLE_Y0 + table_line(b->y, b->z) - (int16_t)scroll_px - 8;
         sx = PMG_X0 + table_px(b->x) - 4;
-        if (sy < TABLE_Y0 - 8 || sy > 230) sy = 0;
+        if (sy < TABLE_Y0 - 4 || sy > 230) {    /* off the scrolled view: hidden */
+            if (n == 0) {
+                memset(pmg_player_mem(0) + old_y[0], 0, 16);
+                memset(pmg_player_mem(1) + old_y[0], 0, 16);
+                pmg_x(0, 0);
+                pmg_x(1, 0);
+            } else {
+                memset(pmg_player_mem((uint8_t)(n + 1)) + old_y[n], 0, 16);
+                pmg_x((uint8_t)(n + 1), 0);
+            }
+            ++n;
+            continue;
+        }
         if (n == 0) {
             const uint8_t *r = ball_spr[spin & 7][0], *w = ball_spr[spin & 7][1];
             p = pmg_player_mem(0);
