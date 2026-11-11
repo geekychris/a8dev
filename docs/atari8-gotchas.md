@@ -53,6 +53,23 @@ Things that cost time, so they don't again.
 
 ## Speed
 
+cc65 hot-code rules (from the ports: a8-arcade, a8-adv's lunar_rider, a8-big):
+
+- `#pragma static-locals (on)` (or `-Cl`) in hot code: locals become static
+  variables at fixed addresses instead of software-stack slots reached
+  through `(sp),y`. (Not for recursive or re-entrant functions.)
+- Avoid indexing by `int` with a scale: `a[i]` with `int i` on an array of
+  `int`/structs, or `int * const p; p[i]`, makes cc65 call its generic
+  multiply/shift routines for every access. Use `uint8_t` indexes, arrays of
+  bytes (split 16-bit values into `_lo[]` / `_hi[]` arrays), and pointers you
+  step yourself.
+- Struct-of-arrays, not pointer-to-struct, for game entities:
+  `uint8_t ent_x[16], ent_y[16], ent_kind[16];` indexed by a `uint8_t` is
+  `lda ent_x,x`; `e->x` through a pointer is a ZP pointer load plus
+  `(ptr),y` per field (and the SDK's sound player went from ~1,900 to 21
+  cycles a frame partly for this reason).
+- Prefer `uint8_t` everywhere it fits: 16-bit arithmetic is 2-3x the code.
+
 - cc65 C is slow for byte loops: a pattern computed per byte with 16-bit
   arithmetic (`(i * 7 + b * 31 + (i >> 8)) & 0xFF`) took banktest 5,200 frames
   (100 s) for 64K. A table plus one add per byte in C was ~100 cycles a byte;
