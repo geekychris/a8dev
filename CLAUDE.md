@@ -59,6 +59,12 @@ Details: docs/mcp.md, docs/emulator-harness.md.
 
 ## Rules learned the hard way
 
+- **Harness log channel**: one char per store to `$D1F0` (`A8_LOG_ADDR`), a status
+  code to `$D1F1` (`A8_SIGNAL_ADDR`), defined only in sdk/include/a8log.h. It's the
+  PBI page, ignored by stock machines (not `$D6xx`: Covox). Release builds
+  (`RELEASE=1`, `A8_RELEASE`, `NDEBUG`, `A8_NO_LOG`) compile every log call away, so
+  shipped games never touch it. Never write these addresses directly.
+
 - **Memory map is fixed** (sdk/cfg/a8.cfg): program `$2000-$8FFF`, C stack
   `$9000-$97FF`, PMG `$9800`, screen `$A000-$BFFF`. `a8_crt_init` moves cc65's
   stack (it starts at MEMTOP, inside our screen) and switches BASIC off on XL/XE.

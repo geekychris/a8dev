@@ -20,7 +20,8 @@
 # $4000 bank window.
 #
 # Overridable: OPT (default -Oirs), CFG (linker config), EXTRA_CFLAGS,
-#   EXTRA_ASFLAGS, EXTRA_LDFLAGS, EXTRA_OBJS, DEBUG=1 (-O0; -g is always on:
+#   EXTRA_ASFLAGS, EXTRA_LDFLAGS, EXTRA_OBJS, RELEASE=1 (no harness log: a8_log
+#   compiles away), DEBUG=1 (-O0; -g is always on:
 #   it only adds symbols to the .lbl/.dbg), A8_NO_LOG=1
 #   (compile a8_log calls out), START (load address, default $2000)
 #
@@ -44,7 +45,7 @@ else
 OPT ?= -Oirs -g
 endif
 
-DEFS    := $(if $(filter 1,$(A8_NO_LOG)),-DA8_NO_LOG)
+DEFS    := $(if $(filter 1,$(A8_NO_LOG)),-DA8_NO_LOG) $(if $(filter 1,$(RELEASE)),-DA8_RELEASE)
 CFLAGS   = -t $(CC65_TARGET) $(OPT) -I$(SRC_DIR) -I$(SDK_DIR)/include $(DEFS) $(EXTRA_CFLAGS)
 ASFLAGS  = -t $(CC65_TARGET) -g -I$(SRC_DIR) -I$(SDK_DIR)/include $(EXTRA_ASFLAGS)
 LDFLAGS  = -t $(CC65_TARGET) -C $(CFG) $(if $(START),--start-addr $(START)) \

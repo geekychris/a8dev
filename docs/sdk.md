@@ -114,7 +114,7 @@ screen/PM area, or globals above `$8000`). See projects/banktest.
 ## Log
 
 `a8_log("game: score=%u lives=%u\n", score, lives)` — each byte goes to
-`$D6FF`, which the patched Atari800 captures (`./a8 log`, `emu_log`,
+`$D1F0`, which the patched Atari800 captures (`./a8 log`, `emu_log`,
 `emu_run_until`). On real hardware the stores do nothing. `A8_NO_LOG=1`
 compiles the calls out. cc65's `%d/%u/%x` are 16-bit; use `%ld/%lu` with
 `long`.

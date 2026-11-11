@@ -10,7 +10,7 @@ docs). Porting the Spectrum games is phase 2.
       MADS 2.1.9 built from source on debian:bookworm-slim, native arm64/amd64.
       `bin/a8-make` runs make in it; `A8_NATIVE=1` (or no Docker) uses a cc65 on
       PATH (2.18 checked).
-- [x] SDK: a8.cfg memory map + crt init; log ($D6FF), frame timer, input,
+- [x] SDK: a8.cfg memory map + crt init; log ($D1F0 chars, $D1F1 status; compiled out with RELEASE=1), frame timer, input,
       rnd, POKEY sound/sfx/music, display lists for ANTIC 2/4/D/E/F + text
       rows, plot/line/rect/text, PMG, 130XE banks, fix8, fix16/vec3 from
       spectrum_dev; project.mk with the bank-window check.

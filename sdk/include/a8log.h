@@ -1,26 +1,42 @@
 /*
  * a8log.h - debug log for programs running in the a8dev harness.
  *
- * Every byte stored to $D6FF (an I/O address nothing uses on a stock
- * 400/800/XL/XE) is one character of the log; the patched Atari800 captures
- * it: ./a8 log, MCP emu_log / emu_run_until, Emulator.run_until() in tests.
- * On real hardware the stores do nothing, so the calls can stay in release
- * builds; build with A8_NO_LOG=1 (-DA8_NO_LOG) to compile them out.
+ * Every byte stored to A8_LOG_ADDR ($D1F0) is one character of the log ($0A
+ * or ATASCII $9B ends a line); a byte stored to A8_SIGNAL_ADDR ($D1F1) is a
+ * status/exit code event. The patched Atari800 captures both: ./a8 log, MCP
+ * emu_log / emu_run_until, Emulator.run_until() in tests. $D1xx is the PBI
+ * page, which a stock 400/800/XL/XE ignores unless a PBI device is selected
+ * through $D1FF (so not $D6xx, where Covox sound often sits).
+ *
+ * Release builds emit nothing: with A8_RELEASE, NDEBUG or A8_NO_LOG defined
+ * (project.mk: RELEASE=1 or A8_NO_LOG=1) every call compiles away, so a
+ * shipped game never touches these addresses.
  *
  * Convention: one line per event, "<program>: <what> key=value...\n".
  * A program without a test.py passes `./a8 test` by logging "A8:DONE"
- * (a8_done()) or fails with "A8:FAIL <why>" (a8_fail()).
+ * (a8_done(), signal 0) or fails with "A8:FAIL <why>" (a8_fail(), signal 1).
  */
 #ifndef A8LOG_H
 #define A8LOG_H
 
-#define A8_LOG_PORT  (*(volatile unsigned char *)0xD6FF)
+/* the only place the addresses are defined (C and, via a8_log_port, asm) */
+#define A8_LOG_ADDR     0xD1F0
+#define A8_SIGNAL_ADDR  0xD1F1
+#define A8_LOG_PORT     (*(volatile unsigned char *)A8_LOG_ADDR)
+#define A8_SIGNAL_PORT  (*(volatile unsigned char *)A8_SIGNAL_ADDR)
+
+#if defined(A8_RELEASE) || defined(NDEBUG)
+#ifndef A8_NO_LOG
+#define A8_NO_LOG
+#endif
+#endif
 
 #ifdef A8_NO_LOG
 #define a8_log(...)     ((void)0)
 #define a8_log_s(s)     ((void)0)
 #define a8_log_c(c)     ((void)0)
 #define a8_log_u(v)     ((void)0)
+#define a8_signal(v)    ((void)0)
 #define a8_done()       ((void)0)
 #define a8_fail(why)    ((void)0)
 #define a8_in_harness() 0
@@ -34,10 +50,12 @@ extern void __fastcall__ a8_log_s(const char *s);
 #define a8_log_c(c)  (A8_LOG_PORT = (unsigned char)(c))
 /* An unsigned decimal number (no newline), without vsnprintf. */
 extern void __fastcall__ a8_log_u(unsigned int v);
-/* Test markers: "A8:DONE\n" and "A8:FAIL <why>\n". */
-#define a8_done()     a8_log_s("A8:DONE\n")
+/* A status/exit-code event (the harness can stop on it). */
+#define a8_signal(v) (A8_SIGNAL_PORT = (unsigned char)(v))
+/* Test markers: "A8:DONE\n" + signal 0, "A8:FAIL <why>\n" + signal 1. */
+extern void a8_done(void);
 extern void __fastcall__ a8_fail(const char *why);
-/* 1 when running in the a8dev harness (reading $D6FF gives 0xA8 there). */
+/* 1 when running in the a8dev harness (reading $D1F0 gives 0xA8 there). */
 #define a8_in_harness() (A8_LOG_PORT == 0xA8)
 #endif
 
