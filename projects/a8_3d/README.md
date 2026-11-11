@@ -24,7 +24,7 @@ and demo (three spinning shaded cubes, wireframe on FIRE).
 | Shading | two alternating patterns (even/odd lines): 7 shades from 4 colours (`a3d_shade_set`) | `a3d_poly.s`, `a3d_sin.c` |
 | Culling | the screen winding of the first three vertices (8 x 8 cross product, deltas shrunk to fit) | `a3d_poly.s` |
 | Clipping | x by clamping each edge per line (exact for convex polygons); y in the edge walker (an edge from above line 0 is advanced by slope x the lines skipped, long edges get their slope by a 24/16 divide); the near plane in camera space (C) | `a3d_poly.s`, `a3d_near.c` |
-| Lines | Bresenham with incremental pointer and mask; Cohen-Sutherland clip in C | `a3d_line.s`, `a3d_line.c` |
+| Lines | Bresenham with incremental pointer and mask; Cohen-Sutherland clip in C (edges and outlines of transformed vertices apart, in `a3d_edge.c`) | `a3d_line.s`, `a3d_line.c`, `a3d_edge.c` |
 | Clearing | rows: one pass of X over all pages with a store per page (5 cycles a byte); or the "dirty" rectangle each buffer recorded | `a3d_span.s` |
 | Maths helpers | `a3d_muldiv` (16 x 16 / 16 in asm), `a3d_mulf` (16 x 16 >> 8) | `a3d_mul.s` |
 | Low RAM | with `-DA3D_LOWTAB` (C and asm flags) the tables and work arrays go in the SDK's `LOWRAM` ($0C00-$1FFF) | (lander_3d) |
@@ -117,7 +117,7 @@ pixels. So the games draw as little 3D as they can:
 | lander_3d | measured 3-7.5 fps (5.5 average) | a 5 x 4-cell window, the lander in players (see its README) |
 | marble_tilt | 17-25 fps | the maze redrawn only when the tilt changes, the marble a 50 Hz sprite |
 | block_breaker_3d | measured: sprites 40-50 Hz, bitmap 20-25 fps, rules 25 ticks/s | the tunnel never redrawn (a row + a middle run a line), bricks redrawn round a hit, the ball/paddle/capsules/ring in players placed by the VBI (see its README) |
-| orbit_docking | 10-15 fps | wireframe station |
+| orbit_docking | measured 4-5 fps by hand, 3.5-4 on the autopilot | filled, the corners projected per plane (the camera only rolls), the ring an annulus of spans, hidden sides culled first (see its README) |
 | tank_duel | 6-10 fps | few, large flat polygons |
 
 Input in a 6-frame iteration: a short tap can fall between two reads, so
