@@ -6,7 +6,7 @@ the nearest rock, firing all the time; after the first wave is cleared
 ends. It enters BOT in the high-score table and returns to the title. The
 game is recorded and replayed twice (every frame hash must match); a 64K
 800XL runs it too. The log's "rb: fps=" lines give the frame rate.
-Screenshots and the GIF go to screenshots/.
+Screenshots and the GIF go to screenshots/ with --shots (build/shots otherwise).
 """
 import math
 import re
@@ -21,7 +21,10 @@ from a8dev.emu import Emulator  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 PROG = HERE / "build" / "rock_blaster.xex"
-SHOTS = HERE / "screenshots"
+# the README's pictures are written with --shots; a plain run (selftest)
+# leaves them alone and writes its pictures under build/
+SHOTS = HERE / "screenshots" if "--shots" in sys.argv else HERE / "build" / "shots"
+SHOTS.mkdir(parents=True, exist_ok=True)
 REC = HERE / "build" / "bot-game.json"
 W, H = 320, 216
 failures = []

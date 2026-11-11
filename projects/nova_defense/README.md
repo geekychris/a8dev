@@ -95,7 +95,8 @@ does) to move where a shot will hit, outer columns and the lowest row
 first, dodging bullets; it clears wave 1, then stops dodging, so lives are
 lost and the game ends. It enters BOT in the high-score table and returns
 to the title. The game is recorded and replayed twice (every frame hash),
-and it boots on a 64K 800XL. The test writes the screenshots and the GIF.
+and it boots on a 64K 800XL. `.venv/bin/python projects/nova_defense/test.py --shots`
+rewrites the screenshots and the GIF.
 
 ## Not done
 
