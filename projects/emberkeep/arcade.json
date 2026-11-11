@@ -1,0 +1,7 @@
+{
+  "title": "Emberkeep",
+  "ready": "ember: ready",
+  "description": "Four chambers by a lantern's light: take the runes, keep the oil burning, mind the dark's things.",
+  "controls": "Stick walk, FIRE begin",
+  "picture": "screenshots/play.png"
+}
