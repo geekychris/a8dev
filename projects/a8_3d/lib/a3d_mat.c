@@ -2,10 +2,6 @@
 #include <string.h>
 #include "a3d_int.h"
 
-const int8_t a3d_sin8[320] = {
-#include "a3d_sin.inc"
-};
-
 static int16_t m8(int8_t a, int8_t b)
 {
     a3d_ma = a;
@@ -71,8 +67,3 @@ void a3d_rot16(const a3d_mat *m, int16_t x, int16_t y, int16_t z, int16_t *out)
     a3d_rot16_(m);
     memcpy(out, a3d_rout, 6);
 }
-
-const uint8_t a3d_shade[7][2] = {
-    { 0x00, 0x00 }, { 0x11, 0x44 }, { 0x55, 0x55 }, { 0x66, 0x99 },
-    { 0xAA, 0xAA }, { 0xBB, 0xEE }, { 0xFF, 0xFF }
-};

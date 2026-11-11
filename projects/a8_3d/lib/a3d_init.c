@@ -8,8 +8,8 @@
 #define DL1    ((uint8_t *)0xBF10)
 
 uint8_t a3d_h;
+uint8_t a3d_ylo[96], a3d_yhi[96];     /* line addresses of buffer 0 (buffer 1: high | $10) */
 uint8_t a3d_back;
-uint8_t a3d_aspect = 109;
 
 static void wait_vbl(void)
 {
@@ -67,7 +67,6 @@ void a3d_init(uint8_t lines, uint8_t text_rows)
     wait_vbl();
     SDMCTL = (SDMCTL & 0x1C) | 0x22;
     wait_vbl();
-    a3d_view(80, (uint8_t)(lines / 2), 80);
     a3d_colour(1);
 }
 
@@ -81,31 +80,31 @@ void a3d_dl_flag(uint8_t y, uint8_t flags)
     DL1[o] = (DL1[o] & 0x7F) | flags;
 }
 
+static uint8_t shown_at;
+
 void a3d_show(void)
 {
     /* both lists start at $xF10: only the high byte changes (atomic for the VBI) */
     *(volatile uint8_t *)0x231 = a3d_back ? 0xBF : 0xAF;
+    shown_at = RTCLOK2;
     a3d_back ^= 1;
     a3d_bsel = a3d_back ? 0x10 : 0x00;
 }
 
-uint8_t a3d_sync(void) { return frame_wait(); }
+/* wait for a vertical blank after the last a3d_show (the new list is then
+   on screen and the other buffer free); frame_wait() for the sound and
+   the count. (frame_wait alone returns at once when a frame passed while
+   drawing, before the switch: the next frame would draw into the buffer
+   on screen.) */
+uint8_t a3d_sync(void)
+{
+    while (RTCLOK2 == shown_at)
+        ;
+    return frame_wait();
+}
 
 uint8_t a3d_flip(void)
 {
     a3d_show();
-    return frame_wait();
-}
-
-void a3d_view(uint8_t cx, uint8_t cy, uint8_t f)
-{
-    uint16_t z, n = (uint16_t)f << 8, v;
-    a3d_vcx = cx;
-    a3d_vcy = cy;
-    a3d_pxlo[0] = a3d_pxhi[0] = 0xFF;
-    for (z = 1; z < 256; ++z) {
-        v = n / z;
-        a3d_pxlo[z] = (uint8_t)v;
-        a3d_pxhi[z] = (uint8_t)(v >> 8);
-    }
+    return a3d_sync();
 }

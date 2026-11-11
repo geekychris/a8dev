@@ -31,12 +31,19 @@ def main():
     ap.add_argument("--fine", action="store_true")
     ap.add_argument("--machine", default="130xe")
     ap.add_argument("--top", type=int, default=30)
+    ap.add_argument("--press", action="append", default=[], help="KEYS before sampling (press, 4 frames)")
+    ap.add_argument("--hold", default=None, help="KEYS held while sampling")
     a = ap.parse_args()
 
     with Emulator(machine=a.machine) as emu:
         emu.load(a.xex)
         if a.until and not emu.run_until(a.until, 6000):
             sys.exit(f"never saw {a.until!r}")
+        for k in a.press:
+            emu.press(k, hold_frames=4)
+            emu.run(10)
+        if a.hold:
+            emu.hold(a.hold)
         emu.run(a.settle)
         cpf = emu.cycles_per_frame
         pos = emu.position()
