@@ -13,9 +13,15 @@ CC65_COMMIT="eebf54af545f4ae52f8489a2f6d4d5f93e7942d2"
 MADS_REF="2.1.9"
 TOOLCHAIN_IMAGE="a8-dev-toolchain:1"
 
+# Atari800 (GPL-2.0), patched with the a8h harness (emulator/patches, emulator/ext)
+ATARI800_REPO="https://github.com/atari800/atari800.git"
+ATARI800_COMMIT="63a381884175e3cbfc745ff00dfb3d70d928eb50"   # tag ATARI800_7_2_1
+
 THIRD_PARTY="$A8_ROOT/third_party"
 ATARI800_DIR="$THIRD_PARTY/atari800"
-ATARI800_BIN="${ATARI800_BIN:-$ATARI800_DIR/build/atari800-a8h}"   # headless; -sdl = window
+# headless (libatari800, no SDL) and window (SDL2) builds of the patched emulator
+ATARI800_BIN="${ATARI800_BIN:-$ATARI800_DIR/build/atari800-a8h}"
+ATARI800_SDL_BIN="${ATARI800_SDL_BIN:-$ATARI800_DIR/build/atari800-a8h-sdl}"
 
 if [ -t 1 ]; then
   _c_b=$'\033[1m'; _c_g=$'\033[32m'; _c_y=$'\033[33m'; _c_r=$'\033[31m'; _c_0=$'\033[0m'

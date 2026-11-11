@@ -1,0 +1,317 @@
+diff --git a/src/atari.c b/src/atari.c
+index 96c95624..6bb58a50 100644
+--- a/src/atari.c
++++ b/src/atari.c
+@@ -67,6 +67,9 @@
+ #endif
+ #include "artifact.h"
+ #include "atari.h"
++#ifdef A8H
++#include "a8h.h"
++#endif
+ #include "binload.h"
+ #include "cartridge.h"
+ #include "cassette.h"
+@@ -483,6 +486,10 @@ int Atari800_Initialise(int *argc, char *argv[])
+ 
+ 	got_config = CFG_LoadConfig(cfg_source_path);
+ 
++#ifdef A8H
++	/* harness: only the built-in Altirra ROMs, never a scan for ROM files */
++	if (!A8H_enabled) {
++#endif
+ 	/* try to find ROM images if the configuration file is not found
+ 	   or it does not specify some ROM paths (blank paths count as specified) */
+ 	SYSROM_FindInDir(CFG_data_dir, TRUE);
+@@ -501,6 +508,9 @@ int Atari800_Initialise(int *argc, char *argv[])
+ 		SYSROM_FindInDir(atari800_exe_rom_dir, TRUE);
+ #endif
+ 	}
++#ifdef A8H
++	}
++#endif
+ #else
+ 	got_config = TRUE; /* pretend we got a config file -- not needed in Android */
+ #endif /* ANDROID */
+@@ -947,7 +957,11 @@ int Atari800_Initialise(int *argc, char *argv[])
+ #ifdef LIBATARI800
+ 	(void) got_config;
+ #else
+-	if (!got_config)
++	if (!got_config
++#ifdef A8H
++	    && !A8H_enabled  /* never write the user's ~/.atari800.cfg */
++#endif
++	)
+ 		CFG_WriteConfig();
+ #endif
+ 
+diff --git a/src/cpu.c b/src/cpu.c
+index 5061a868..d23ac580 100644
+--- a/src/cpu.c
++++ b/src/cpu.c
+@@ -60,6 +60,9 @@
+ #include <stdlib.h>	/* exit() */
+ 
+ #include "cpu.h"
++#ifdef A8H
++#include "a8h.h"
++#endif
+ #ifdef ASAP /* external project, see http://asap.sf.net */
+ #include "asap_internal.h"
+ #else
+@@ -691,6 +694,16 @@ void CPU_GO(int limit)
+ 		}
+ #endif /* MONITOR_BREAK */
+ 
++#ifdef A8H
++		if (A8H_cpu_check) {
++			UPDATE_GLOBAL_REGS;
++			CPU_GetStatus();
++			A8H_CpuHook();
++			CPU_PutStatus();
++			UPDATE_LOCAL_REGS;
++		}
++#endif
++
+ #if defined(WRAP_64K) && !defined(PC_PTR)
+ 		MEMORY_mem[0x10000] = MEMORY_mem[0];
+ #endif
+@@ -2345,6 +2358,13 @@ void CPU_GO(int limit)
+ 		UPDATE_GLOBAL_REGS;
+ 		CPU_GetStatus();
+ 
++#ifdef A8H
++		if (A8H_Cim(insn)) {
++			CPU_PutStatus();
++			UPDATE_LOCAL_REGS;
++			DONE;
++		}
++#endif
+ #ifdef CRASH_MENU
+ 		UI_crash_address = GET_PC();
+ 		UI_crash_afterCIM = GET_PC() + 1;
+diff --git a/src/input.c b/src/input.c
+index 29c3bc6a..82beb255 100644
+--- a/src/input.c
++++ b/src/input.c
+@@ -31,6 +31,9 @@
+ #include "cpu.h"
+ #include "gtia.h"
+ #include "input.h"
++#ifdef A8H
++#include "a8h.h"
++#endif
+ #include "akey.h"
+ #include "log.h"
+ #include "memory.h"
+@@ -439,6 +442,9 @@ void INPUT_Frame(void)
+ 		INPUT_key_code = AKEY_NONE;
+ 		INPUT_key_shift = 0;
+ 	}
++#ifdef A8H
++	A8H_InputKeys();
++#endif
+ 
+ 	/* In Atari 5200 joystick there's a second fire button, which acts
+ 	   like the Shift key in 800/XL/XE (bit 3 in SKSTAT) and generates IRQ
+@@ -542,6 +548,9 @@ void INPUT_Frame(void)
+ 	} else {
+ #endif
+ 		i = PLATFORM_PORT(0);
++#ifdef A8H
++		i = A8H_InputPort(0, i);
++#endif
+ #ifdef EVENT_RECORDING
+ 	}
+ 	if (recording) {
+@@ -558,6 +567,9 @@ void INPUT_Frame(void)
+ 	} else {
+ #endif
+ 		i = PLATFORM_PORT(1);
++#ifdef A8H
++		i = A8H_InputPort(1, i);
++#endif
+ #ifdef EVENT_RECORDING
+ 	}
+ 	if (recording) {
+@@ -603,6 +615,9 @@ void INPUT_Frame(void)
+ 		} else {
+ #endif
+ 			TRIG_input[i] = PLATFORM_TRIG(i);
++#ifdef A8H
++			TRIG_input[i] = A8H_InputTrig(i, TRIG_input[i]);
++#endif
+ #ifdef EVENT_RECORDING
+ 		}
+ 		if(recording){
+diff --git a/src/libatari800/libatari800.h b/src/libatari800/libatari800.h
+index 94c56aa8..20a6efae 100644
+--- a/src/libatari800/libatari800.h
++++ b/src/libatari800/libatari800.h
+@@ -119,7 +119,7 @@ typedef struct {
+ } input_template_t;
+ 
+ 
+-#define STATESAV_MAX_SIZE 210000
++#define STATESAV_MAX_SIZE 1048576   /* a8h: 210000 truncated 130XE states (silently dropped the XE banks) */
+ 
+ /* byte offsets into output_template.state array of groups of data
+    to prevent the need for a full parsing of the save state data to
+diff --git a/src/memory.c b/src/memory.c
+index 197e0a9a..569ebea0 100644
+--- a/src/memory.c
++++ b/src/memory.c
+@@ -1225,3 +1225,7 @@ void MEMORY_HwPutByte(UWORD addr, UBYTE byte)
+ 	}
+ }
+ #endif /* PAGED_MEM */
++
++#ifdef A8H
++#include "a8h.c"
++#endif
+diff --git a/src/pbi.c b/src/pbi.c
+index 441a4d47..2e87f95a 100644
+--- a/src/pbi.c
++++ b/src/pbi.c
+@@ -25,6 +25,9 @@
+ 
+ #include "atari.h"
+ #include "pbi.h"
++#ifdef A8H
++#include "a8h.h"
++#endif
+ #include "memory.h"
+ #include "pia.h"
+ #include "cpu.h"
+@@ -157,6 +160,10 @@ void PBI_Reset(void)
+ UBYTE PBI_D1GetByte(UWORD addr, int no_side_effects)
+ {
+ 	int result = 0xff;
++#ifdef A8H
++	if (A8H_enabled && (addr == 0xd1f0 || addr == 0xd1f1))
++		return addr == 0xd1f0 ? 0xa8 : 0xd8;   /* "running in the a8dev harness" */
++#endif
+ 	/* MIO and BB do not follow the spec, they take over the bus: */
+ #ifdef PBI_MIO
+ 	if (PBI_MIO_enabled) return PBI_MIO_D1GetByte(addr, no_side_effects);
+@@ -191,6 +198,10 @@ UBYTE PBI_D1GetByte(UWORD addr, int no_side_effects)
+ void PBI_D1PutByte(UWORD addr, UBYTE byte)
+ {
+ 	static int fp_active = TRUE;
++#ifdef A8H
++	if (A8H_D1Put(addr, byte))
++		return;
++#endif
+ #ifdef PBI_MIO
+ 	if (PBI_MIO_enabled) {
+ 		PBI_MIO_D1PutByte(addr, byte);
+diff --git a/src/sdl/main.c b/src/sdl/main.c
+index ecaf6c3f..c80db849 100644
+--- a/src/sdl/main.c
++++ b/src/sdl/main.c
+@@ -37,6 +37,9 @@
+ 
+ /* Atari800 includes */
+ #include "atari.h"
++#ifdef A8H
++#include "a8h.h"
++#endif
+ #include "../input.h"
+ #include "log.h"
+ #include "monitor.h"
+@@ -168,6 +171,16 @@ static int osk_consol_mask = 0;
+ static int osk_consol_delay = 0;
+ #endif
+ 
++#ifdef A8H
++/* the CPU is held by the harness: keep the window responsive */
++static void a8h_sdl_idle(int redraw)
++{
++	SDL_PumpEvents();
++	if (redraw)
++		PLATFORM_DisplayScreen();
++}
++#endif
++
+ int main(int argc, char **argv)
+ {
+ #if HAVE_WINDOWS_H
+@@ -180,9 +193,16 @@ int main(int argc, char **argv)
+ 	}
+ #endif /* HAVE_WINDOWS_H */
+ 
++#ifdef A8H
++	A8H_Init(&argc, argv);
++#endif
+ 	/* initialise Atari800 core */
+ 	if (!Atari800_Initialise(&argc, argv))
+ 		return 3;
++#ifdef A8H
++	A8H_platform_idle = a8h_sdl_idle;
++	A8H_Start();
++#endif
+ 
+ 	if(Atari800_start_in_monitor) {
+ 		if (!Atari800_Exit(TRUE))
+@@ -192,6 +212,9 @@ int main(int argc, char **argv)
+ 
+ 	/* main loop */
+ 	for (;;) {
++#ifdef A8H
++		A8H_LOOP_TOP();
++#endif
+ 		INPUT_key_code = PLATFORM_Keyboard();
+ #ifdef USE_UI_BASIC_ONSCREEN_KEYBOARD
+ 		if (osk_consol_delay > 0) {
+@@ -225,6 +248,10 @@ int main(int argc, char **argv)
+ #endif
+ 		SDL_INPUT_Mouse();
+ 		Atari800_Frame();
++#ifdef A8H
++		if (A8H_enabled)
++			A8H_FrameEnd();
++#endif
+ 		if (Atari800_display_screen)
+ 			PLATFORM_DisplayScreen();
+ 	}
+diff --git a/src/sio.c b/src/sio.c
+index 9a5b7104..9f7c31b8 100644
+--- a/src/sio.c
++++ b/src/sio.c
+@@ -1963,3 +1963,21 @@ void SIO_StateRead(void)
+ /*
+ vim:ts=4:sw=4:
+ */
++
++#ifdef A8H
++/* a8h: power-on state for what Atari800's coldstart leaves behind: the serial
++   transfer and the "Overmind" sector-1 delay (3200 scanlines after a previous
++   read of sector 1 made a reboot ~10 frames slower than the first boot). */
++void SIO_A8H_PowerOn(void)
++{
++	CommandIndex = 0;
++	DataIndex = 0;
++	TransferStatus = SIO_NoFrame;
++	ExpectedBytes = 0;
++	memset(CommandFrame, 0, sizeof(CommandFrame));
++#ifndef NO_SECTOR_DELAY
++	delay_counter = 0;
++	last_ypos = 0;
++#endif
++}
++#endif
+diff --git a/src/sio.h b/src/sio.h
+index 3be16694..b619410e 100644
+--- a/src/sio.h
++++ b/src/sio.h
+@@ -60,6 +60,9 @@ int SIO_DriveStatus(int unit, UBYTE *buffer);
+ int SIO_WriteStatusBlock(int unit, const UBYTE *buffer);
+ int SIO_WriteSector(int unit, int sector, const UBYTE *buffer);
+ void SIO_StateSave(void);
++#ifdef A8H
++void SIO_A8H_PowerOn(void);
++#endif
+ void SIO_StateRead(void);
+ 
+ #endif	/* SIO_H_ */
