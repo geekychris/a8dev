@@ -46,6 +46,25 @@ isn't running).
 sprite moved with the joystick or W/A/S/D, and `a8_log` lines that the
 test waits for. Read docs/sdk.md for the library.
 
+## Playing in the window
+
+`./a8 run <project>` and `./a8 arcade` open Atari800 in a window:
+
+| Key | Atari |
+|---|---|
+| arrow keys | joystick 1 (keypad 8 / 5 / 4 / 6 also work) |
+| Option (Mac) / Left Alt | fire (Right Ctrl also works) |
+| F4 / F3 / F2 | START / SELECT / OPTION |
+| F5 | RESET (the arcade: back to the menu) |
+| F1 | Atari800's menu (a second keyboard joystick, W A S D + Left Ctrl, can be enabled there) |
+| F9 | quit |
+| other keys | the Atari keyboard |
+
+The arrow keys are the joystick, so they aren't the Atari's cursor keys in a
+window; programs read the joystick (the SDK's `input_read()` does both).
+Holding Option and pressing a letter is an Atari800 shortcut (e.g.
+Option+F fullscreen), not fire + that key.
+
 ## With Claude Code
 
 Open the repo in `claude`. `.mcp.json` registers the `a8` MCP server

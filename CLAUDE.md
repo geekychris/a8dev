@@ -41,6 +41,9 @@ user-visible, free-running; `emu_attach()` = join `./a8 run X`. Also `emu_run(fr
 `emu_reboot`. Screens: `emu_look`, `emu_record_video(path.gif|.mp4)`, `emu_screen_hash`.
 Recording: `emu_record_input("start"|"stop"|"save", path, from_reset)` + `emu_replay(path)`.
 
+Window keys (the user): arrows = joystick, Option/Left Alt = fire, F4 START, F3 SELECT,
+F2 OPTION, F5 RESET, F9 quit (emulator/patches/0002).
+
 Keys: `A`-`Z` `0`-`9` `SPACE` `RETURN` `ESC` `TAB` `DELETE`, `SHIFT+A`, `CTRL+A`;
 console `START` `SELECT` `OPTION`; joystick 0 `UP` `DOWN` `LEFT` `RIGHT` `FIRE`
 (`UP+FIRE`).

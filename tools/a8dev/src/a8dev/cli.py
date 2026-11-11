@@ -23,6 +23,8 @@ from pathlib import Path
 from .emu import Emulator
 
 DEFAULT_MACHINE = "130xe"
+CONTROLS = ("Arrows = joystick, Option/Left Alt = fire (keypad 8/5/4/6 + Right Ctrl too), "
+            "F4 START, F3 SELECT, F2 OPTION, F5 RESET, F1 menu, F9 quit")
 LAYERS = ["screen"]
 from .session import resolve_program
 
@@ -250,7 +252,8 @@ def cmd_arcade(a) -> int:
     if a.image_only:
         return 0
     from .session import serve
-    print("window session: the disk boots into the menu (reset to come back from a game).")
+    print("window session: the disk boots into the menu (F5 RESET comes back from a game).")
+    print(CONTROLS)
     serve(m["image"], DEFAULT_MACHINE, True, "running", 0, a.zoom)
     return 0
 
@@ -353,6 +356,7 @@ def main(argv=None) -> int:
         from .session import serve
         prog = resolve_program(a.program)
         print("window session; ./a8 ctl <cmd> drives it, Claude can emu_attach(). Ctrl-C or close the window to stop.")
+        print(CONTROLS)
         serve(prog, a.machine, True, "running", a.port, a.zoom)
         return 0
     if a.cmd == "arcade":
