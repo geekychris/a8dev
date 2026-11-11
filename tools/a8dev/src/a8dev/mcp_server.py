@@ -450,17 +450,47 @@ def emu_set_reg(reg: str, value: str) -> str:
 
 
 @server.tool()
-def emu_read_mem(addr: str, length: int = 64, bank: int = -1) -> str:
+def emu_read_mem(addr: str, length: int = 64, bank: int = -1, space: str = "cpu") -> str:
     """Hex dump of memory at an address or symbol ('player_x', '$A010', 'buf+16') as the
-    CPU sees it now. bank=N (0..3) reads 130XE extended bank N whether mapped or not;
-    addr is then the offset 0..$3FFF (or $4000-$7FFF, the window address)."""
-    return _call("read_mem", addr=addr, length=length, bank=None if bank < 0 else bank)["dump"]
+    CPU sees it now (hardware registers read without side effects). bank=N (0..3) reads
+    130XE extended bank N whether mapped or not; addr is then the offset 0..$3FFF (or
+    $4000-$7FFF). space="ram": the RAM under the OS/BASIC ROMs and behind a mapped bank."""
+    return _call("read_mem", addr=addr, length=length, bank=None if bank < 0 else bank,
+                 space=space)["dump"]
 
 
 @server.tool()
-def emu_write_mem(addr: str, hex: str, bank: int = -1) -> str:
-    """Write bytes (hex string) at an address/symbol, or into a 130XE bank (see emu_read_mem)."""
-    return _j(_call("write_mem", addr=addr, hex=hex, bank=None if bank < 0 else bank))
+def emu_write_mem(addr: str, hex: str, bank: int = -1, space: str = "cpu") -> str:
+    """Write bytes (hex string) at an address/symbol, into a 130XE bank, or (space="ram")
+    to the RAM under the ROMs (see emu_read_mem)."""
+    return _j(_call("write_mem", addr=addr, hex=hex, bank=None if bank < 0 else bank, space=space))
+
+
+@server.tool()
+def emu_run_until_signal(max_frames: int = 3000) -> str:
+    """Run until the program writes a status byte to $D1F1 (a8_signal(v); a8_done() = 0,
+    a8_fail() = 1). The result's status has "signal"."""
+    return _j(_call("run_until_signal", max_frames=max_frames))
+
+
+@server.tool()
+def emu_run_to_addr(addr: str, max_frames: int = 500) -> str:
+    """Run until the PC reaches an address or symbol (a one-shot breakpoint)."""
+    return _j(_call("run_to_addr", addr=addr, max_frames=max_frames))
+
+
+@server.tool()
+def emu_console(keys: str = "") -> str:
+    """Hold console keys until changed: 'START', 'SELECT+OPTION'; '' releases them.
+    (emu_press('START') is a short press.)"""
+    return _j(_call("console", keys=keys or None))
+
+
+@server.tool()
+def emu_hw() -> str:
+    """Chip registers as last written (ANTIC: DMACTL, DLIST, CHBASE, PMBASE...; GTIA:
+    colours, HPOS, PRIOR, GRACTL...; POKEY: AUDF/AUDC/AUDCTL...; PIA: PORTB) and the memory setup."""
+    return _j(_call("hw"))
 
 
 @server.tool()

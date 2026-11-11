@@ -129,9 +129,18 @@ class Session:
             "regs": (lambda: {**e.regs(), "pc_symbol": e.symbols.name_of(e.regs()["PC"])}, "CPU registers"),
             "set_reg": (lambda reg, value: e.set_reg(reg, value), "set_reg(reg, value)"),
             "read_mem": (self._read_mem,
-                         "read_mem(addr, length=64, bank?): hex + dump; addr may be a symbol; "
-                         "bank = 130XE extended bank 0..3 (addr = offset 0..$3FFF or $4000-$7FFF)"),
-            "write_mem": (self._write_mem, "write_mem(addr, hex, bank?)"),
+                         "read_mem(addr, length=64, bank?, space=cpu|ram): hex + dump; addr may be a symbol; "
+                         "bank = 130XE extended bank 0..3 (addr = offset 0..$3FFF or $4000-$7FFF); "
+                         "space=ram: the RAM under the OS/BASIC ROMs and behind a mapped bank"),
+            "write_mem": (self._write_mem, "write_mem(addr, hex, bank?, space=cpu|ram)"),
+            "run_until_signal": (lambda max_frames=3000: e.run_until_signal(max_frames),
+                                 "run_until_signal(max_frames=3000): run until the program writes a "
+                                 "status byte to $D1F1 (a8_signal/a8_done/a8_fail); status() has it"),
+            "run_to_addr": (lambda addr, max_frames=500: e.run_to_addr(addr, max_frames),
+                            "run_to_addr(addr|symbol, max_frames=500): run until PC = addr"),
+            "console": (lambda keys=None: (e.console(keys), {"held": e._held})[1],
+                        "console(keys?): hold START/SELECT/OPTION ('START+OPTION'), none = release"),
+            "hw": (lambda: e.hw(), "ANTIC/GTIA/POKEY/PIA registers as last written, and the memory setup"),
             "find_mem": (self._find_mem, "find_mem(hex|text, start=0, end=65536)"),
             "disasm": (lambda addr="pc", count=12: {"listing": "\n".join(e.disasm(addr, count))},
                        "disasm(addr=pc, count=12)"),
@@ -192,16 +201,16 @@ class Session:
         return {"png_b64": base64.b64encode(buf.getvalue()).decode(), "width": img.width,
                 "height": img.height, "path": path, "colors": len(img.getcolors(1 << 16) or [])}
 
-    def _read_mem(self, addr, length=64, bank=None):
+    def _read_mem(self, addr, length=64, bank=None, space="cpu"):
         a = self.emu.addr(addr) if bank is None or not isinstance(addr, int) else addr
-        data = self.emu.read_mem(a, int(length), bank=bank)
-        return {"addr": a, "bank": bank, "hex": data.hex(), "dump": _hexdump(a, data)}
+        data = self.emu.read_mem(a, int(length), bank=bank, space=space)
+        return {"addr": a, "bank": bank, "space": space, "hex": data.hex(), "dump": _hexdump(a, data)}
 
-    def _write_mem(self, addr, hex, bank=None):
+    def _write_mem(self, addr, hex, bank=None, space="cpu"):
         data = bytes.fromhex(hex.replace(" ", ""))
         a = self.emu.addr(addr) if bank is None or not isinstance(addr, int) else addr
-        self.emu.write_mem(a, data, bank=bank)
-        return {"addr": a, "bank": bank, "written": len(data)}
+        self.emu.write_mem(a, data, bank=bank, space=space)
+        return {"addr": a, "bank": bank, "space": space, "written": len(data)}
 
     def _find_mem(self, hex=None, text=None, start=0, end=0x10000):
         needle = bytes.fromhex(hex.replace(" ", "")) if hex else text.encode("latin-1")
