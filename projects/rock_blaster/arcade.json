@@ -1,0 +1,7 @@
+{
+  "title": "Rock Blaster",
+  "ready": "rb: ready",
+  "description": "Vector rock shooter: turn, thrust and fire; big rocks split in two, clear the wave for more.",
+  "controls": "Joystick left/right turn, up thrust, FIRE shoots",
+  "picture": "screenshots/play.png"
+}
