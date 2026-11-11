@@ -103,5 +103,5 @@ void phys_step(int8_t jx, int8_t jz);   /* one 1/50 s step; jx, jz -1..1 (the st
 uint8_t ground(uint16_t gx, uint16_t gz);   /* 1 if there's deck: g_h, g_sx, g_sz, g_cls */
 extern int16_t g_h, g_sx, g_sz;
 extern uint8_t g_cls;
-uint16_t speed_of(int16_t vx, int16_t vz);
+uint16_t __fastcall__ speed_of(int16_t vx, int16_t vz);   /* maths.s */
 #endif

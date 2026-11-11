@@ -438,7 +438,7 @@ static void play_step(int8_t jx, int8_t jz)
         }
         return;
     }
-    if (autopilot) { demo_input(&jx, &jz); probe[4] = (uint8_t)jx; probe[5] = (uint8_t)jz; probe[6] = demo_wp; }
+    if (autopilot) demo_input(&jx, &jz);
     phys_step(jx, jz);
     time_left -= 2;
     course_time += 2;

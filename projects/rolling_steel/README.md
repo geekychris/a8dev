@@ -93,10 +93,14 @@ clock with it.
   original wakes them within 40 units); a chaser and a blob at a time
   are shown (two players for them).
 - Best times and high scores last the session.
-- The autopilot steers the route with the joystick's eight directions; it
-  clears courses 1 to 5, but the last pool on course 6 traps it (the
-  attract mode gives up after three falls). Route points that lie in an
-  acid pool are moved out of it for the autopilot.
+- The autopilot steers the route with the joystick's eight directions.
+  Route points that lie in an acid pool are moved out of it for it; with
+  acid within a second of it, it creeps (2.5 u/s) and keeps closer to the
+  route. It can't get past everything: course 6's steel chaser guards the
+  gap between two pools, so when the autopilot is put back at the same
+  place a second time, it goes on from three safe route points further.
+  With that it finishes all six courses (the attract mode gives up after
+  five falls).
 
 ## How it works
 
@@ -145,10 +149,14 @@ uses), for the RAM under it.
 ## Speed
 
 Measured in the emulator (PAL, frames drawn and 1/50 s steps a second,
-rolling): course 1 about 24 frames a second with the physics at 48 of 50
-steps (real time is 50); the courses with more going on 15 to 20 frames a
-second, the physics 44 to 46 steps a second (the clock runs with the game,
-so a run isn't cut short).
+with the autopilot rolling, which costs a little itself): course 1 about
+24 frames a second with the physics at 49 of 50 steps (real time is 50);
+the courses with more going on 13 to 20 frames a second, the physics 46 to
+47 steps a second (the clock runs with the game, so a run isn't cut
+short). The marble's forces and trigger boxes (`src/force.s`), its move
+(`src/move.s`), the deck and grid lookups and `speed_of` (`src/maths.s`)
+are assembly; a course row with the font and colours of the row above
+gets no display interrupt.
 
 ## Not done
 

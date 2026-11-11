@@ -714,3 +714,73 @@ _acid_at:
         bcc     @nb
         inc     ptr1+1
 @nb:    jmp     @box
+
+; uint16_t __fastcall__ speed_of(int16_t vx, int16_t vz): |v| from above,
+; the octagon: max + min / 4 + min / 8 (phys.c's, in assembly)
+        .export _speed_of
+.segment "BSS"
+so_a:   .res 2
+so_b:   .res 2
+.segment "CODE"
+_speed_of:
+        jsr     soabs           ; vz -> so_b
+        sta     so_b
+        stx     so_b+1
+        jsr     popax
+        jsr     soabs
+        cmp     so_b            ; |vx| < |vz|: swap
+        pha
+        txa
+        sbc     so_b+1
+        bcs     @ok
+        pla                     ; a = so_b, b = |vx|
+        ldy     so_b
+        sta     so_b
+        tya
+        pha
+        lda     so_b+1
+        stx     so_b+1
+        tax
+@ok:    pla
+        sta     so_a
+        stx     so_a+1
+        lda     so_b+1          ; b >> 2
+        lsr
+        sta     tmp2
+        lda     so_b
+        ror
+        lsr     tmp2
+        ror
+        sta     tmp1
+        lda     tmp2            ; (b >> 2) >> 1 = b >> 3
+        lsr
+        sta     tmp4
+        lda     tmp1
+        ror
+        clc
+        adc     tmp1
+        sta     tmp3
+        lda     tmp4
+        adc     tmp2
+        tax                     ; X:tmp3 = b/4 + b/8
+        lda     tmp3
+        clc
+        adc     so_a
+        pha
+        txa
+        adc     so_a+1
+        tax
+        pla
+        rts
+soabs:  cpx     #$80
+        bcc     @r
+        eor     #$FF
+        clc
+        adc     #1
+        pha
+        txa
+        eor     #$FF
+        adc     #0
+        tax
+        pla
+@r:     rts

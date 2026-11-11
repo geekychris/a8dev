@@ -96,12 +96,8 @@ static int8_t isin8(uint8_t a)          /* 256 per turn */
 
 static int16_t iabs(int16_t v) { return v < 0 ? -v : v; }
 
-uint16_t speed_of(int16_t vx, int16_t vz)
-{
-    uint16_t a = (uint16_t)iabs(vx), b = (uint16_t)iabs(vz);
-    if (a < b) { uint16_t t = a; a = b; b = t; }
-    return a + (b >> 2) + (b >> 3);     /* the octagon: within 6% of the length */
-}
+/* speed_of(vx, vz): max + min / 4 + min / 8, the octagon (within 6% of
+   the length): maths.s */
 
 /* the deck under (gx, gz): maths.s's ground_q() */
 uint8_t ground(uint16_t gx, uint16_t gz)
@@ -160,67 +156,11 @@ void phys_reset(void)
     phys_enemies_home();
 }
 
-/* is the ball in box b? */
-static uint8_t in_box(const BoxHdr *b)
-{
-    uint16_t k = B_z >> 7;
-    const uint16_t *rows;
-    if (k < b->k0) return 0;
-    k -= b->k0;
-    if (k >= b->nrows) return 0;
-    if (B_y < b->y0 || B_y > b->y1) return 0;
-    rows = (const uint16_t *)(b + 1) + (k << 1);
-    return B_x >= rows[0] && B_x <= rows[1];
-}
-
+void __fastcall__ marble_force(int8_t jx, int8_t jz);
 static void marble(int8_t jx, int8_t jz)
 {
-    int16_t a, ax, az, sx, sz;
-    uint8_t k;
-    const uint8_t *p;
     load_ball(0);
-    if (B_gr) a = B_cls == S_ICE ? 2 * ACCEL : 2 * ACCEL_ROLL;
-    else a = 2 * ACCEL_AIR;
-    ax = jx * a;
-    az = jz * a;
-    if (jx && jz) {
-        ax = (ax * 181) >> 8;
-        az = (az * 181) >> 8;
-    }
-    B_vx += ax;
-    B_vz += az;
-    if (B_gr) {
-        sx = B_sx;
-        sz = B_sz;
-        if (sx > 128) sx = 128; else if (sx < -128) sx = -128;
-        if (sz > 128) sz = 128; else if (sz < -128) sz = -128;
-        switch (B_cls) {
-        case S_ICE:                     /* slides: all of the pull, no drag */
-            B_vx -= (sx * 72) >> 7;
-            B_vz -= (sz * 72) >> 7;
-            break;
-        case S_ROUGH:                   /* sand bites */
-            B_vx -= ((sx * 51) >> 7) + (B_vx >> 5);
-            B_vz -= ((sz * 51) >> 7) + (B_vz >> 5);
-            break;
-        default:                        /* rolling */
-            B_vx -= ((sx * 51) >> 7) + (B_vx >> 8);
-            B_vz -= ((sz * 51) >> 7) + (B_vz >> 8);
-        }
-    }
-    /* boxes: fans and boost strips push; acid; the finish */
-    p = boxes;
-    for (k = MH->nbox; k; --k) {
-        const BoxHdr *b = (const BoxHdr *)p;
-        if (in_box(b)) {
-            if (b->kind == BOX_ZONE) {
-                B_vx += 2 * b->dvx;
-                B_vz += 2 * b->dvz;
-            } else
-                ph_event |= b->kind == BOX_GOAL ? PE_GOAL : PE_DISSOLVED;
-        }
-        p += sizeof(BoxHdr) + ((uint16_t)b->nrows << 2);
-    }
+    marble_force(jx, jz);               /* force.s: the push, the slope and drag, the boxes */
     cap();
     ball_move();
     store_ball(0);
