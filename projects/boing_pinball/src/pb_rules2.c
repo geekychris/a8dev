@@ -59,7 +59,11 @@ void pb_lamps(const Game *g, int8_t blink, int8_t chase, uint8_t on[L_COUNT])
     int8_t i, lane = 0, skill;
     memset(on, 0, L_COUNT);
     if (g->state == GS_ATTRACT || g->state == GS_OVER) {
-        for (i = 0; i < L_COUNT; i++) on[i] = (uint8_t)((i + chase) % 5 == 0);
+        int8_t k = (int8_t)(chase % 5);    /* port: (i + chase) % 5 == 0, counting (no modulo a lamp) */
+        for (i = 0; i < L_COUNT; i++) {
+            on[i] = (uint8_t)(k == 0);
+            if (++k == 5) k = 0;
+        }
         return;
     }
     for (i = 0; i < g->w.nballs; i++) if (g->w.balls[i].state == BS_LANE) lane = 1;

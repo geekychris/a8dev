@@ -101,6 +101,8 @@ static void dmd_text(const char *big, const char *small)
 typedef struct { char name[4]; int32_t score; } Hs;
 static Hs hs[5] = { { "AMI", 200000L }, { "BOI", 100000L }, { "NGA", 50000L }, { "PIN", 20000L }, { "BAL", 5000L } };
 static uint8_t ed_place, ed_pos;
+static char hs_line[44];                   /* the attract mode's line of the top three */
+static uint8_t hs_line_ok;
 static char ed_name[4];
 
 /* ------------------------------------------------------------ the display */
@@ -184,11 +186,12 @@ static void flippers_init(void)
 }
 
 /* the table's scan line and pixel of a point (P), height z (mm) */
+extern int16_t __fastcall__ mulq12(int16_t a, int16_t b);    /* fmath.s: (a * b) >> 12 */
 static int16_t table_line(int16_t y, int16_t z)
 {
-    return (int16_t)(VIEW_OY - (int16_t)(mul16(y, VIEW_KY_Q12) >> 12) - (int16_t)(mul16(z, VIEW_KZ_Q12) >> 12));
+    return (int16_t)(VIEW_OY - mulq12(y, VIEW_KY_Q12) - (z ? mulq12(z, VIEW_KZ_Q12) : 0));
 }
-static int16_t table_px(int16_t x) { return (int16_t)(VIEW_OX + (int16_t)(mul16(x, VIEW_KX_Q12) >> 12)); }
+static int16_t table_px(int16_t x) { return (int16_t)(VIEW_OX + mulq12(x, VIEW_KX_Q12)); }
 
 static void draw_flippers(void)
 {
@@ -240,11 +243,12 @@ static void draw_balls(void)
     uint8_t i, n = 0, *p;
     int16_t follow = -1, lowest = 0x7FFF;
     static uint8_t old_y[4] = { 0, 0, 0, 0 };
+    static int16_t line[PB_MAX_BALLS];       /* each ball's table line, worked out once */
     for (i = 0; i < G.w.nballs; ++i) {
         const Ball *b = &G.w.balls[i];
         int16_t t;
         if (b->state == BS_DRAINED) continue;
-        t = table_line(b->y, b->z);
+        line[i] = t = table_line(b->y, b->z);
         if (b->y < lowest) { lowest = b->y; follow = t; }
     }
     /* the scroll: the lowest ball a third of the way up the screen */
@@ -261,7 +265,7 @@ static void draw_balls(void)
         const Ball *b = &G.w.balls[i];
         int16_t sy, sx;
         if (b->state == BS_DRAINED) continue;
-        sy = TABLE_Y0 + table_line(b->y, b->z) - (int16_t)scroll_px - 8;
+        sy = TABLE_Y0 + line[i] - (int16_t)scroll_px - 8;
         sx = PMG_X0 + table_px(b->x) - 4;
         if (sy < TABLE_Y0 - 4 || sy > 230) {    /* off the scrolled view: hidden */
             if (n == 0) {
@@ -314,18 +318,21 @@ static void draw_dmd(void)
     pb_dmd(&G, &dm);
     if (mode == M_ATTRACT) {
         if ((mode_t / 150) & 1) {
-            uint8_t i;
-            char *p = small;
-            for (i = 0; i < 3; ++i) {
-                memcpy(p, hs[i].name, 3);
-                p[3] = ' ';
-                pb_fmt(p + 4, hs[i].score);
-                p += strlen(p);
-                *p++ = ' ';
-                *p++ = ' ';
+            if (!hs_line_ok) {               /* made again only when the table changes */
+                uint8_t i;
+                char *p = hs_line;
+                for (i = 0; i < 3; ++i) {
+                    memcpy(p, hs[i].name, 3);
+                    p[3] = ' ';
+                    pb_fmt(p + 4, hs[i].score);
+                    p += strlen(p);
+                    *p++ = ' ';
+                    *p++ = ' ';
+                }
+                *p = 0;
+                hs_line_ok = 1;
             }
-            *p = 0;
-            dmd_text("HIGH SCORES", small);
+            dmd_text("HIGH SCORES", hs_line);
         } else
             dmd_text("BOING PINBALL", "COMET TOUR   PRESS START");
         return;
@@ -446,6 +453,7 @@ static void entry_input(uint8_t edge, uint8_t key)
         for (i = 4; i > ed_place; --i) hs[i] = hs[i - 1];
         memcpy(hs[ed_place].name, ed_name, 4);
         hs[ed_place].score = G.score;
+        hs_line_ok = 0;
         a8_log("pb: hiscore name=%s score=%ld place=%u\n", ed_name, G.score, ed_place);
         new_game(1);
     }
