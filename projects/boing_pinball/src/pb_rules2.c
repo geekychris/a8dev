@@ -59,20 +59,46 @@ void pb_lamps(const Game *g, int8_t blink, int8_t chase, uint8_t on[L_COUNT])
     int8_t i, lane = 0, skill;
     memset(on, 0, L_COUNT);
     if (g->state == GS_ATTRACT || g->state == GS_OVER) {
-        for (i = 0; i < L_COUNT; i++) on[i] = (uint8_t)((i + chase) % 5 == 0);
+        int8_t k = (int8_t)(chase % 5);    /* port: (i + chase) % 5 == 0, counting (no modulo a lamp) */
+        for (i = 0; i < L_COUNT; i++) {
+            on[i] = (uint8_t)(k == 0);
+            if (++k == 5) k = 0;
+        }
         return;
     }
-    for (i = 0; i < g->w.nballs; i++) if (g->w.balls[i].state == BS_LANE) lane = 1;
+    /* port: pointers and running masks (cc65 multiplies for each array
+       index of a struct and shifts 1 << i a bit at a time); the same lamps */
+    {
+        const Ball *b = g->w.balls;
+        for (i = 0; i < g->w.nballs; i++, b++) if (b->state == BS_LANE) lane = 1;
+    }
     skill = g->skill_armed && (g->time - g->plunge_at < PB_MS(6000) || lane) ? g->skill_lane : -1;
     for (i = 0; i < 3; i++) on[L_LANE0 + i] = (uint8_t)(g->lanes[i] || (skill == i && blink));
-    for (i = 0; i < 3; i++) on[L_LOCK0 + i] = (uint8_t)(g->multiball ? blink : (i < g->locks || (i == g->locks && blink && g->state == GS_PLAY)));
+    {
+        int8_t locks = g->locks, mb = g->multiball, play = blink && g->state == GS_PLAY;
+        for (i = 0; i < 3; i++) on[L_LOCK0 + i] = (uint8_t)(mb ? blink : (i < locks || (i == locks && play)));
+    }
     on[L_JACKPOT] = (uint8_t)(g->multiball && blink);
-    for (i = 0; i < 5; i++) on[L_M0 + i] = (uint8_t)((g->missions_done & (1 << i)) || (g->mission == i && blink));
+    {
+        uint8_t done = (uint8_t)g->missions_done, bit = 1;
+        int8_t m = g->mission;
+        for (i = 0; i < 5; i++, bit <<= 1) on[L_M0 + i] = (uint8_t)((done & bit) || (m == i && blink));
+    }
     on[L_MISSION] = (uint8_t)(g->mission_lit && g->mission < 0 && blink);
-    for (i = 0; i < 4; i++) on[L_X2 + i] = (uint8_t)(g->bonus_x >= i + 2);
+    {
+        int8_t bx = g->bonus_x;
+        for (i = 0; i < 4; i++) on[L_X2 + i] = (uint8_t)(bx >= i + 2);
+    }
     on[L_SAVE] = (uint8_t)(g->time < g->save_until);
-    for (i = 0; i < g->t->nspin && i < 2; i++) on[L_SPIN0 + i] = (uint8_t)(g->w.spin[i].w > 2 * 256);
-    for (i = 0; i < g->t->ndrop && i < 8; i++) on[L_DROP0 + i] = g->t->seg[g->t->drop_seg[i]].up;
+    {
+        const Spinner *sp = g->w.spin;
+        for (i = 0; i < g->t->nspin && i < 2; i++, sp++) on[L_SPIN0 + i] = (uint8_t)(sp->w > 2 * 256);
+    }
+    {
+        const Seg *seg = g->t->seg;
+        const int8_t *ds = g->t->drop_seg;
+        for (i = 0; i < g->t->ndrop && i < 8; i++) on[L_DROP0 + i] = (seg + ds[i])->up;
+    }
     on[L_SUPER] = (uint8_t)(g->supernova > g->time && blink);
 }
 

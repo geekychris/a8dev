@@ -12,7 +12,7 @@
 ;   plunger, the drain). The order is the original's.
 
         .export _move_ball
-        .import _mb_cap, _mb_seg, _mb_circ, _mb_sens, _mb_flip, _mb_tail
+        .import _mb_cap, _mb_seg, _mb_seg_end, _mb_seg_hit, _mb_circ, _mb_sens, _mb_flip, _mb_tail
         .import _mb_sx0, _mb_sy0, _mb_sx1, _mb_sy1, _mb_sp
         .import _mb_cx, _mb_cy, _mb_crr, _mb_cp
         .import _mb_nx0, _mb_ny0, _mb_nx1, _mb_ny1, _mb_np
@@ -355,8 +355,9 @@ mv_fresh: pla
         jmp     mv_seg
 mv_ns:
         cmp     #1
-        beq     mv_circ
-        jmp     mv_sens
+        bne     mv_ns2
+        jmp     mv_circ
+mv_ns2: jmp     mv_sens
 
 mv_next: jmp    mv_entry
 mv_seg:   ldy     idx                     ; bx < x0 || bx > x1 || by < y0 || by > y1: next
@@ -364,6 +365,8 @@ mv_seg:   ldy     idx                     ; bx < x0 || bx > x1 || by < y0 || by 
         bgt16y  bx, _mb_sx1, mv_next
         blt16y  by, _mb_sy0, mv_next
         bgt16y  by, _mb_sy1, mv_next
+        ldy     idx
+.ifdef SEGCHECK
         push_wb
         ldy     idx
         lda     _mb_sp,y
@@ -371,6 +374,76 @@ mv_seg:   ldy     idx                     ; bx < x0 || bx > x1 || by < y0 || by 
         jsr     _mb_seg
         inc     dirty
         jmp     mv_entry
+.else
+        ; port: pb_phys.c's mb_seg without the C for a miss: a dropped
+        ; target is skipped; the test counted; seg_fast; the C for an end
+        ; (mb_seg_end) or a contact's speed (mb_seg_hit)
+        lda     _mb_sp,y
+        sta     ptr3
+        lda     _mb_sp+1,y
+        sta     ptr3+1
+        ldy     #S_KIND
+        lda     (ptr3),y
+        cmp     #SK_DROP
+        bne     @t
+        ldy     #S_UP
+        lda     (ptr3),y
+        bne     @t
+        jmp     mv_entry
+@t:     lda     mw              ; w->tests++ (offset 535)
+        clc
+        adc     #<(W_TESTS - 512)
+        sta     ptr1
+        lda     mw+1
+        adc     #>(W_TESTS - 512) + 2
+        sta     ptr1+1
+        ldy     #0
+        lda     (ptr1),y
+        clc
+        adc     #1
+        sta     (ptr1),y
+        iny
+        lda     (ptr1),y
+        adc     #0
+        sta     (ptr1),y
+        lda     mbp
+        ldx     mbp+1
+        jsr     pushax
+        lda     ptr3
+        ldx     ptr3+1
+        jsr     _seg_fast
+        cpx     #$80
+        bne     @r
+        cmp     #0
+        bne     @r
+        push_wb                 ; an end: the C
+        ldy     idx
+        lda     _mb_sp,y
+        ldx     _mb_sp+1,y
+        jsr     _mb_seg_end
+        inc     dirty
+        jmp     mv_entry
+@r:     cpx     #$80            ; -1: missed, the ball untouched
+        bcc     @hit
+        jmp     mv_entry
+@hit:   inc     dirty           ; touching (0) or a contact: the ball was moved
+        stx     tmp4
+        ora     tmp4
+        bne     @imp
+        jmp     mv_entry
+@imp:   ldx     tmp4
+        sta     t1
+        stx     t1+1
+        push_wb
+        ldy     idx
+        lda     _mb_sp,y
+        ldx     _mb_sp+1,y
+        jsr     pushax
+        lda     t1
+        ldx     t1+1
+        jsr     _mb_seg_hit
+        jmp     mv_entry
+.endif
 
 mv_circ:  ldy     idx                     ; |bx - cx| < rr && |by - cy| < rr
         lda     bx
@@ -562,6 +635,10 @@ absw:   lda     (ptr4),y
         .importzp ptr3
 
 S_AX    = 0                     ; Seg (pbz.h)
+S_KIND  = 25
+S_UP    = 30
+SK_DROP = 5
+W_TESTS = 535
 S_AY    = 2
 S_UX    = 8
 S_UY    = 10
@@ -2172,3 +2249,659 @@ _div625:
         beq     @r
         ldx     #$FF
 @r:     rts
+
+; ---------------------------------------------------------------- the step
+; void __fastcall__ b0_world_step(World *w): pb_world_step (pb_phys.c had
+; the C; the same, step for step):
+;   each ball: nocatch counts down; in play: the rolling resistance
+;   (v -= v / 625), its speed from above (max + min / 2 + the gravity's
+;   step, at most 32767): the fastest;
+;   each moving flipper (w != 0 or not at its target): to the substeps'
+;   list; if a ball in play is within its reach + a step's travel, the
+;   tip's speed counts (len + r2) * 21 / 2;
+;   n = 1 + (fast + tip) / 1350 (by subtraction, at most 40) with a ball in
+;   play; the substep's constants from sub_tab[n]; the move tables
+;   (pb_mb_prepare) for a new table; the substeps; then the balls on a
+;   ramp (pb_ramp_step), in the saucer (hold counts down, at rest), in the
+;   lane (at rest); the spinners (pb_phys.c's spinners) when one turns.
+        .export _b0_world_step
+        .import _sub_tab, _sub_acc_up, _sub_acc_down, _sub_kang, _sub_n1
+        .import _mb_t, _pb_mb_prepare, _pb_ramp_step, _spinners
+        .importzp ptr1, ptr2
+
+W_BALLS = 2                     ; World (pb_phys.c checks these)
+W_NB    = 106
+W_FLIP  = 107
+W_NF    = 185
+W_SPIN  = 186
+W_POWER = 532
+W_SUBST = 534
+B_STATE = 1
+B_HOLD  = 19
+B_NOC   = 21
+F_SIDE_ = 0
+F_REST  = 11
+F_UP    = 13
+F_HELD  = 19
+SIZE_B  = 26
+SIZE_F  = 26
+BS_LANE = 1
+BS_RAMP = 2
+BS_SAUCER = 3
+GRAVSTEP = 240
+
+.segment "B0BSS"
+ws_w:   .word 0
+ws_fast: .word 0
+ws_tip: .word 0
+ws_live: .byte 0
+ws_i:   .byte 0
+ws_j:   .byte 0
+ws_n:   .byte 0
+ws_j2:  .byte 0
+ws_ax:  .word 0
+ws_ay:  .word 0
+ws_r:   .word 0
+ws_px:  .word 0
+ws_py:  .word 0
+
+.segment "B0CODE"
+
+; ptr3 = &w->balls[A] (A < 4)
+ballp:  tax
+        lda     ws_w
+        clc
+        adc     #W_BALLS
+        sta     ptr3
+        lda     ws_w+1
+        adc     #0
+        sta     ptr3+1
+@m:     dex
+        bmi     @r
+        lda     ptr3
+        clc
+        adc     #SIZE_B
+        sta     ptr3
+        bcc     @m
+        inc     ptr3+1
+        bne     @m
+@r:     rts
+
+; ptr4 = &w->flip[A]
+flipp:  tax
+        lda     ws_w
+        clc
+        adc     #W_FLIP
+        sta     ptr4
+        lda     ws_w+1
+        adc     #0
+        sta     ptr4+1
+@m:     dex
+        bmi     @r
+        lda     ptr4
+        clc
+        adc     #SIZE_F
+        sta     ptr4
+        bcc     @m
+        inc     ptr4+1
+        bne     @m
+@r:     rts
+
+; A/X = |A/X| (int16)
+absax:  cpx     #$80
+        bcc     @r
+        eor     #$FF
+        clc
+        adc     #1
+        pha
+        txa
+        eor     #$FF
+        adc     #0
+        tax
+        pla
+@r:     rts
+
+; the byte at w + Y -> A
+.macro  wb  off
+        ldy     #off
+        lda     (ptr2),y
+.endmacro
+
+_b0_world_step:
+        sta     ws_w
+        stx     ws_w+1
+        lda     #0
+        sta     ws_fast
+        sta     ws_fast+1
+        sta     ws_tip
+        sta     ws_tip+1
+        sta     ws_live
+        ; ---- the balls
+        sta     ws_i
+@ball:  lda     ws_w
+        sta     ptr2
+        lda     ws_w+1
+        sta     ptr2+1
+        wb      W_NB
+        cmp     ws_i
+        beq     @bd1
+        bpl     @bgo
+@bd1:   jmp     @bdone
+@bgo:   lda     ws_i
+        jsr     ballp
+        ; nocatch > 0: -1
+        ldy     #B_NOC+1
+        lda     (ptr3),y
+        bmi     @nc
+        dey
+        ora     (ptr3),y
+        beq     @nc
+        lda     (ptr3),y
+        sec
+        sbc     #1
+        sta     (ptr3),y
+        iny
+        lda     (ptr3),y
+        sbc     #0
+        sta     (ptr3),y
+@nc:    ldy     #B_STATE
+        lda     (ptr3),y
+        beq     @inplay
+        jmp     @bnext
+@inplay:
+        inc     ws_live
+        ; v -= div625(v)
+        ldy     #B_VX
+        jsr     resist
+        ldy     #B_VY
+        jsr     resist
+        ; s = max + min / 2 + GRAVSTEP (unsigned), at most 32767
+        ldy     #B_VX+1
+        lda     (ptr3),y
+        tax
+        dey
+        lda     (ptr3),y
+        jsr     absax
+        sta     ws_ax
+        stx     ws_ax+1
+        ldy     #B_VY+1
+        lda     (ptr3),y
+        tax
+        dey
+        lda     (ptr3),y
+        jsr     absax
+        sta     ws_ay
+        stx     ws_ay+1
+        lda     ws_ay           ; ax > ay ?
+        cmp     ws_ax
+        lda     ws_ay+1
+        sbc     ws_ax+1
+        bcs     @aylarger       ; ay >= ax
+        lda     ws_ay+1         ; ax + ay / 2
+        lsr
+        sta     ws_r+1
+        lda     ws_ay
+        ror
+        clc
+        adc     ws_ax
+        sta     ws_r
+        lda     ws_r+1
+        adc     ws_ax+1
+        sta     ws_r+1
+        jmp     @s
+@aylarger:
+        lda     ws_ax+1         ; ay + ax / 2
+        lsr
+        sta     ws_r+1
+        lda     ws_ax
+        ror
+        clc
+        adc     ws_ay
+        sta     ws_r
+        lda     ws_r+1
+        adc     ws_ay+1
+        sta     ws_r+1
+@s:     lda     ws_r
+        clc
+        adc     #<GRAVSTEP
+        sta     ws_r
+        lda     ws_r+1
+        adc     #>GRAVSTEP
+        sta     ws_r+1
+        bmi     @cap            ; > 32767 (unsigned, at most ~65K: bit 15)
+        bcc     @nocap
+@cap:   lda     #$FF
+        sta     ws_r
+        lda     #$7F
+        sta     ws_r+1
+@nocap: lda     ws_fast         ; s > fast?
+        cmp     ws_r
+        lda     ws_fast+1
+        sbc     ws_r+1
+        bcs     @bnext
+        lda     ws_r
+        sta     ws_fast
+        lda     ws_r+1
+        sta     ws_fast+1
+@bnext: inc     ws_i
+        jmp     @ball
+@bdone: ; ---- the flippers
+        lda     #0
+        sta     _sub_nfl
+        sta     ws_i
+@flip:  lda     ws_w
+        sta     ptr2
+        lda     ws_w+1
+        sta     ptr2+1
+        wb      W_NF
+        cmp     ws_i
+        bne     @f1
+        jmp     @fdone
+@f1:    bmi     @f1d
+        jmp     @f2
+@f1d:   jmp     @fdone
+@f2:    inc     ptr2+1          ; (w + 512: the field is past 255)
+        inc     ptr2+1
+        wb      W_POWER - 512
+        dec     ptr2+1
+        dec     ptr2+1
+        sta     tmp4
+        lda     ws_i
+        jsr     flipp
+        ; target = held && power ? up : rest
+        ldy     #F_REST
+        lda     tmp4
+        beq     @t
+        ldy     #F_HELD
+        lda     (ptr4),y
+        beq     @trest
+        ldy     #F_UP
+        bne     @t
+@trest: ldy     #F_REST
+@t:     lda     (ptr4),y
+        sta     ws_r
+        iny
+        lda     (ptr4),y
+        sta     ws_r+1
+        ; moving: w != 0 || ang != target
+        ldy     #F_W
+        lda     (ptr4),y
+        iny
+        ora     (ptr4),y
+        bne     @mov
+        ldy     #F_ANG
+        lda     (ptr4),y
+        cmp     ws_r
+        bne     @mov
+        iny
+        lda     (ptr4),y
+        cmp     ws_r+1
+        bne     @mov
+        jmp     @fnext
+@mov:   lda     _sub_nfl        ; to the substeps' list
+        asl
+        tay
+        lda     ptr4
+        sta     _sub_fl,y
+        lda     ptr4+1
+        sta     _sub_fl+1,y
+        inc     _sub_nfl
+        ; reach = len + r1 + PB_R + 4480
+        ldy     #F_LEN
+        lda     (ptr4),y
+        ldy     #F_R1
+        clc
+        adc     (ptr4),y
+        sta     ws_r
+        ldy     #F_LEN+1
+        lda     (ptr4),y
+        ldy     #F_R1+1
+        adc     (ptr4),y
+        sta     ws_r+1
+        lda     ws_r
+        clc
+        adc     #<(PB_R + 4480)
+        sta     ws_r
+        lda     ws_r+1
+        adc     #>(PB_R + 4480)
+        sta     ws_r+1
+        ldy     #F_PX
+        lda     (ptr4),y
+        sta     ws_px
+        iny
+        lda     (ptr4),y
+        sta     ws_px+1
+        ldy     #F_PY
+        lda     (ptr4),y
+        sta     ws_py
+        iny
+        lda     (ptr4),y
+        sta     ws_py+1
+        ; a ball in play within reach?
+        lda     #0
+        sta     ws_j
+@fb:    wb      W_NB
+        cmp     ws_j
+        beq     @fb1
+        bpl     @fb2
+@fb1:   jmp     @fnext
+@fb2:
+        lda     ws_j
+        jsr     ballp
+        ldy     #B_STATE
+        lda     (ptr3),y
+        bne     @fbn
+        ldy     #B_X
+        lda     (ptr3),y
+        sec
+        sbc     ws_px
+        pha
+        iny
+        lda     (ptr3),y
+        sbc     ws_px+1
+        tax
+        pla
+        jsr     absax
+        jsr     ltreach
+        bcs     @fbn
+        ldy     #B_Y
+        lda     (ptr3),y
+        sec
+        sbc     ws_py
+        pha
+        iny
+        lda     (ptr3),y
+        sbc     ws_py+1
+        tax
+        pla
+        jsr     absax
+        jsr     ltreach
+        bcc     @found
+@fbn:   inc     ws_j
+        jmp     @fb
+@found: ; tp = (mul16(len + r2, 21) >> 1); tp > tip: tip = tp
+        ldy     #F_LEN
+        lda     (ptr4),y
+        ldy     #F_R2
+        clc
+        adc     (ptr4),y
+        sta     ma
+        ldy     #F_LEN+1
+        lda     (ptr4),y
+        ldy     #F_R2+1
+        adc     (ptr4),y
+        sta     ma+1
+        lda     #21
+        sta     mb
+        lda     #0
+        sta     mb+1
+        jsr     smul_mm
+        lda     pr+2            ; (pr >> 1), the low 16 bits
+        lsr
+        lda     pr+1
+        ror
+        sta     ws_ax+1
+        lda     pr
+        ror
+        sta     ws_ax
+        lda     ws_tip          ; tp > tip (signed)?
+        cmp     ws_ax
+        lda     ws_tip+1
+        sbc     ws_ax+1
+        bvc     @v
+        eor     #$80
+@v:     bpl     @fnext
+        lda     ws_ax
+        sta     ws_tip
+        lda     ws_ax+1
+        sta     ws_tip+1
+@fnext: inc     ws_i
+        jmp     @flip
+@fdone: ; ---- n = 1 + (fast + tip) / 1350, at most 40, with a ball in play
+        lda     ws_fast
+        clc
+        adc     ws_tip
+        sta     ws_r
+        lda     ws_fast+1
+        adc     ws_tip+1
+        sta     ws_r+1
+        lda     #1
+        sta     ws_n
+        lda     ws_live
+        beq     @ndone
+@nl:    lda     #<1350          ; sp > 1350?
+        cmp     ws_r
+        lda     #>1350
+        sbc     ws_r+1
+        bcs     @ndone
+        lda     ws_n
+        cmp     #40
+        bcs     @ndone
+        lda     ws_r
+        sec
+        sbc     #<1350
+        sta     ws_r
+        lda     ws_r+1
+        sbc     #>1350
+        sta     ws_r+1
+        inc     ws_n
+        bne     @nl
+@ndone: ldx     #0
+        lda     ws_n
+        cmp     #1
+        bne     @n1
+        inx
+@n1:    stx     _sub_n1
+        inc     ptr2+1
+        inc     ptr2+1
+        ldy     #W_SUBST - 512
+        lda     ws_n
+        sta     (ptr2),y
+        dec     ptr2+1
+        dec     ptr2+1
+        ; sub_tab[n]: 12 bytes a row
+        lda     ws_n
+        asl
+        asl
+        sta     tmp1            ; n * 4
+        asl
+        clc
+        adc     tmp1            ; n * 12 (n <= 40: < 256... 480: carry)
+        sta     tmp1
+        lda     #0
+        rol
+        sta     tmp2
+        ; (n * 12 = n * 8 + n * 4: redo with 16 bits)
+        lda     ws_n
+        sta     tmp1
+        lda     #0
+        sta     tmp2
+        asl     tmp1
+        rol     tmp2
+        asl     tmp1
+        rol     tmp2            ; n * 4
+        lda     tmp1
+        sta     tmp3
+        lda     tmp2
+        sta     tmp4
+        asl     tmp1
+        rol     tmp2            ; n * 8
+        lda     tmp1
+        clc
+        adc     tmp3
+        sta     tmp1
+        lda     tmp2
+        adc     tmp4
+        sta     tmp2            ; n * 12
+        lda     tmp1
+        clc
+        adc     #<_sub_tab
+        sta     ptr1
+        lda     tmp2
+        adc     #>_sub_tab
+        sta     ptr1+1
+        ldy     #0
+        lda     (ptr1),y
+        sta     _sub_acc_up
+        iny
+        lda     (ptr1),y
+        sta     _sub_acc_up+1
+        iny
+        lda     (ptr1),y
+        sta     _sub_acc_down
+        iny
+        lda     (ptr1),y
+        sta     _sub_acc_down+1
+        iny
+        lda     (ptr1),y
+        sta     _sub_kang
+        iny
+        lda     (ptr1),y
+        sta     _sub_kang+1
+        iny
+        lda     (ptr1),y
+        sta     _sub_kpos
+        iny
+        lda     (ptr1),y
+        sta     _sub_kpos+1
+        iny
+        lda     (ptr1),y
+        sta     _sub_gq
+        iny
+        lda     (ptr1),y
+        sta     _sub_gq+1
+        iny
+        lda     (ptr1),y
+        sta     _sub_gr         ; (0..39: its low byte)
+        ; the move tables for a new table
+        ldy     #1
+        lda     (ptr2),y
+        cmp     _mb_t+1
+        bne     @prep
+        dey
+        lda     (ptr2),y
+        cmp     _mb_t
+        beq     @noprep
+@prep:  lda     ws_w
+        ldx     ws_w+1
+        jsr     _pb_mb_prepare
+@noprep:
+        ; the substeps
+        lda     ws_w
+        sta     _sub_w
+        sta     ptr2
+        lda     ws_w+1
+        sta     _sub_w+1
+        sta     ptr2+1
+        lda     ws_n
+        sta     _sub_n
+        wb      W_NB
+        sta     _sub_nb
+        lda     #0
+        sta     ws_i
+@bl:    lda     ws_i
+        cmp     _sub_nb
+        beq     @bld
+        jsr     ballp
+        lda     ws_i
+        asl
+        tay
+        lda     ptr3
+        sta     _sub_bl,y
+        lda     ptr3+1
+        sta     _sub_bl+1,y
+        inc     ws_i
+        bne     @bl
+@bld:   jsr     _substeps
+        ; ---- the balls on a ramp, in the saucer, in the lane
+        lda     #0
+        sta     ws_i
+@after: lda     ws_i
+        cmp     _sub_nb
+        beq     @adone
+        jsr     ballp
+        ldy     #B_STATE
+        lda     (ptr3),y
+        cmp     #BS_RAMP
+        bne     @sau
+        lda     ws_w
+        ldx     ws_w+1
+        jsr     pushax
+        lda     ptr3
+        ldx     ptr3+1
+        jsr     _pb_ramp_step
+        jmp     @anext
+@sau:   cmp     #BS_SAUCER
+        bne     @lane
+        ldy     #B_HOLD         ; hold--
+        lda     (ptr3),y
+        sec
+        sbc     #1
+        sta     (ptr3),y
+        iny
+        lda     (ptr3),y
+        sbc     #0
+        sta     (ptr3),y
+        jmp     @rest
+@lane:  cmp     #BS_LANE
+        bne     @anext
+@rest:  lda     #0
+        ldy     #B_VX
+        sta     (ptr3),y
+        iny
+        sta     (ptr3),y
+        iny
+        sta     (ptr3),y
+        iny
+        sta     (ptr3),y
+@anext: inc     ws_i
+        jmp     @after
+@adone: ; ---- the spinners: C, when one turns (w > 0)
+        lda     ws_w
+        sta     ptr2
+        lda     ws_w+1
+        sta     ptr2+1
+        ldy     #W_SPIN+3       ; spin[0].w
+        lda     (ptr2),y
+        bmi     @s1
+        dey
+        ora     (ptr2),y
+        bne     @spin
+@s1:    ldy     #W_SPIN+7       ; spin[1].w
+        lda     (ptr2),y
+        bmi     @s2
+        dey
+        ora     (ptr2),y
+        bne     @spin
+@s2:    rts
+@spin:  lda     ws_w
+        ldx     ws_w+1
+        jmp     _spinners
+
+; carry clear if A/X (>= 0) < ws_r (the reach)
+ltreach:
+        cmp     ws_r
+        txa
+        sbc     ws_r+1
+        rts
+
+; the ball's velocity word at Y (ptr3): v -= div625(v)
+resist: sty     ws_j2
+        iny
+        lda     (ptr3),y
+        tax
+        dey
+        lda     (ptr3),y
+        jsr     _div625
+        sta     tmp1
+        stx     tmp2
+        ldy     ws_j2
+        lda     (ptr3),y
+        sec
+        sbc     tmp1
+        sta     (ptr3),y
+        iny
+        lda     (ptr3),y
+        sbc     tmp2
+        sta     (ptr3),y
+        rts
