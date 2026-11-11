@@ -292,7 +292,7 @@ static int tv_lines(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* the guest log: bytes written to $D6FF, signals to $D6FE */
+/* the guest log: bytes written to $D1F0, signals to $D1F1 */
 
 #define LOG_SIZE (4 * 1024 * 1024)
 static UBYTE *log_ring = NULL;
@@ -344,15 +344,15 @@ static void log_byte(UBYTE c)
 	}
 }
 
-int A8H_D6Put(UWORD addr, UBYTE byte)
+int A8H_D1Put(UWORD addr, UBYTE byte)
 {
 	if (!A8H_enabled)
 		return 0;
-	if (addr == 0xd6ff) {
+	if (addr == 0xd1f0) {
 		log_byte(byte);
 		return 1;
 	}
-	if (addr == 0xd6fe) {
+	if (addr == 0xd1f1) {
 		signal_count++;
 		signal_last = byte;
 		signal_frame = frame;

@@ -128,7 +128,7 @@ def test_running(e, prog):
     check("log() since the mark", "key=15" in e.log())
     check("run_until(since=cursor) finds text written after the cursor", e.run_until("key=15", 5, since=c))
     r = e.run_until_signal(300)
-    check("signal ($D6FE) stops a run", r["why"] == "signal" and r.get("signal") == "42", str(r))
+    check("signal ($D1F1) stops a run", r["why"] == "signal" and r.get("signal") == "42", str(r))
     check("status reports the signal", e.status()["signal"] == 42)
     e.run(1)
     check("run_to(frame) lands on the frame boundary", e.run_to(e.position()["since_load"] + 7) and
@@ -464,7 +464,7 @@ def test_projects():
     with Emulator() as e:
         e.load(hello)
         check("hello: ready", e.run_until("hello: ready", 600))
-        check("a8_in_harness(): $D6FF reads $A8", e.peek(0xD6FF) == 0xA8)
+        check("a8_in_harness(): $D1F0 reads $A8, $D1F1 $D8", e.read_mem(0xD1F0, 2) == b"\xa8\xd8")
         if bank.exists():
             e.load(bank)
             check("banktest: A8:DONE", e.run_until("A8:DONE", 9000), e.log(0)[-200:])

@@ -1,9 +1,9 @@
 ; emutest - the emulator harness's test program (tools/a8dev/tests/test_emulator.py).
 ;
-; Logs through the a8h log port ($D6FF) and exercises what the tests check:
+; Logs through the a8h log port ($D1F0) and exercises what the tests check:
 ; keyboard (CH), sticks/triggers, console keys, POKEY RANDOM, 130XE banks,
 ; a JSR'd routine (breakpoints, watchpoints, step-over, backtrace), a signal
-; ($D6FE) and a CPU jam on demand. Every frame it changes the background
+; ($D1F1) and a CPU jam on demand. Every frame it changes the background
 ; colour so per-frame screen hashes differ.
 ;
 ; Build: cl65 -t atari -C atari-asm.cfg -Ln emutest.lbl -o emutest.xex emutest.s
@@ -11,8 +11,8 @@
         .export start, main_loop, bump, frame_hook, counter, watched, readme, banksig
         .export log_hex, log_str, hexbuf
 
-LOGPORT = $D6FF
-SIGPORT = $D6FE
+LOGPORT = $D1F0
+SIGPORT = $D1F1
 RTCLOK3 = $14
 SDMCTL  = $22F
 COLOR2  = $2C6          ; playfield shadow: the last key

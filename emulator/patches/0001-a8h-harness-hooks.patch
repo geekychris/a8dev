@@ -171,7 +171,7 @@ index 197e0a9a..569ebea0 100644
 +#include "a8h.c"
 +#endif
 diff --git a/src/pbi.c b/src/pbi.c
-index 441a4d47..4a725947 100644
+index 441a4d47..2e87f95a 100644
 --- a/src/pbi.c
 +++ b/src/pbi.c
 @@ -25,6 +25,9 @@
@@ -184,28 +184,28 @@ index 441a4d47..4a725947 100644
  #include "memory.h"
  #include "pia.h"
  #include "cpu.h"
-@@ -253,6 +256,10 @@ void PBI_D1PutByte(UWORD addr, UBYTE byte)
- /* $D6xx */
- UBYTE PBI_D6GetByte(UWORD addr, int no_side_effects)
+@@ -157,6 +160,10 @@ void PBI_Reset(void)
+ UBYTE PBI_D1GetByte(UWORD addr, int no_side_effects)
  {
+ 	int result = 0xff;
 +#ifdef A8H
-+	if (A8H_enabled && addr == 0xd6ff)
-+		return 0xa8;   /* "running in the a8dev harness" */
++	if (A8H_enabled && (addr == 0xd1f0 || addr == 0xd1f1))
++		return addr == 0xd1f0 ? 0xa8 : 0xd8;   /* "running in the a8dev harness" */
 +#endif
- #ifdef AF80
- 	if (AF80_enabled) return AF80_D6GetByte(addr, no_side_effects);
- #endif
-@@ -273,6 +280,10 @@ UBYTE PBI_D6GetByte(UWORD addr, int no_side_effects)
- /* $D6xx */
- void PBI_D6PutByte(UWORD addr, UBYTE byte)
+ 	/* MIO and BB do not follow the spec, they take over the bus: */
+ #ifdef PBI_MIO
+ 	if (PBI_MIO_enabled) return PBI_MIO_D1GetByte(addr, no_side_effects);
+@@ -191,6 +198,10 @@ UBYTE PBI_D1GetByte(UWORD addr, int no_side_effects)
+ void PBI_D1PutByte(UWORD addr, UBYTE byte)
  {
+ 	static int fp_active = TRUE;
 +#ifdef A8H
-+	if (A8H_D6Put(addr, byte))
++	if (A8H_D1Put(addr, byte))
 +		return;
 +#endif
- #ifdef AF80
- 	if (AF80_enabled) {
- 		AF80_D6PutByte(addr,byte);
+ #ifdef PBI_MIO
+ 	if (PBI_MIO_enabled) {
+ 		PBI_MIO_D1PutByte(addr, byte);
 diff --git a/src/sdl/main.c b/src/sdl/main.c
 index ecaf6c3f..c80db849 100644
 --- a/src/sdl/main.c

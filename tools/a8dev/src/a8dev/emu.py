@@ -637,7 +637,7 @@ class Emulator:
         return self._run(max_frames, to=self.addr(addr))
 
     def run_until_signal(self, max_frames: int = 3000) -> dict:
-        """Run until the program writes a byte to $D6FE (an exit code)."""
+        """Run until the program writes a byte to $D1F1 (a status / exit code)."""
         return self._run(max_frames, until_signal=1)
 
     def position(self) -> dict:

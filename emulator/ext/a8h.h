@@ -36,10 +36,11 @@ void A8H_CpuHook(void);
 /* An illegal CIM/JAM opcode at CPU_regPC. Returns non-zero when handled. */
 int A8H_Cim(UBYTE insn);
 
-/* Write to page $D6. Returns non-zero when a8h consumed it: $D6FF is the
-   guest log (one character per write), $D6FE a signal byte. Reading $D6FF
-   gives $A8 (pbi.c). */
-int A8H_D6Put(UWORD addr, UBYTE byte);
+/* Write to page $D1 (the PBI page, inert on a stock machine). Returns
+   non-zero when a8h consumed it: $D1F0 is the guest log (one character per
+   write), $D1F1 a signal (status/exit code). In the harness $D1F0 reads $A8
+   and $D1F1 reads $D8 (pbi.c). */
+int A8H_D1Put(UWORD addr, UBYTE byte);
 
 /* Input: called from INPUT_Frame() once per frame. */
 void A8H_InputKeys(void);
