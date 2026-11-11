@@ -55,13 +55,14 @@ python3 projects/tank_duel/tools/make_gif.py
 - **12.5 ticks a second.** Each tick is two of the original's: speeds,
   turns and shell steps are doubled, and the timers count half as many
   ticks.
-- **Enemies think every other tick** (half of them each tick) and drive
-  on their last decision in between. So they decide 6.25 times a second
+- **Enemies think every other tick** (half of them each tick), and every
+  fourth tick with more than 3 enemies. In between they drive on their
+  last decision. So they decide 6.25 times a second (3.1 in big rounds)
   and fire on those ticks.
 - `tools/run_orig.c` / `tools/run_port.c` play the autopilot over 20
   seeds on the host, original against port. The fights end up alike but
-  not bit for bit: the port reaches round 3.3 on average (2.6 in the
-  original) with 6.8 kills (5.2).
+  not bit for bit: the port reaches round 3.1 on average (2.6 in the
+  original) with 6.1 kills (5.2).
 - **High scores:** five, with initials. The original keeps the best score
   only.
 
@@ -78,7 +79,7 @@ python3 projects/tank_duel/tools/make_gif.py
   - There are no barrels, and turrets are dropped beyond 450 units.
   - Objects beyond 350 units are one polygon: the outline between their
     outer edges, in one shade.
-- **Draw limits:** nothing beyond 1100 units, and at most 7 objects drawn
+- **Draw limits:** nothing beyond 1100 units, and at most 10 objects drawn
   (the nearest). The radar still shows every tank.
 - **Mortar rings** are blinking marks on the radar, not rings on the
   ground.
@@ -101,15 +102,15 @@ python3 projects/tank_duel/tools/make_gif.py
 
 | | |
 |---|---|
-| `$0C00-$1B22` | a8_3d's tables and work arrays, the game state, the view's arrays |
-| `$1C00-$1FB8` | asm: the tank's drive, the shells' flight (loaded there: no DOS) |
-| `$2000-$9221` | the program: a8_3d, the view, the front end, the maths, the SDK |
+| `$0C00-$1B72` | a8_3d's tables and work arrays, the game state, the view's arrays |
+| `$1C00-$1FBA` | asm: the tank's drive, the shells' flight (loaded there: no DOS) |
+| `$2000-$95AD` | the program: a8_3d (with its convex-object path), the view, the front end, the maths, the SDK |
 | `$9600-$97FF` | C stack |
 | `$9800-$99FF` | the font's capitals and digits (copied from the ROM) |
 | `$9B00-$9FFF` | players and missiles |
 | `$A000-$BFFF` | a8_3d's two buffers, display lists, text rows |
-| `$C000-$CFBE` | under the ROM: the minds and the autopilot (`td_ai.c`), the radar |
-| `$D800-$FE32` | under the ROM: the rules (`td_core.c`) |
+| `$C000-$CF78` | under the ROM: the minds and the autopilot (`td_ai.c`), the radar |
+| `$D800-$FE08` | under the ROM: the rules (`td_core.c`) |
 
 The XEX loads the code for under the ROM at `$9800`, a part at a time. A
 routine at `$0600`, run by INITAD, switches the ROM off and copies each
@@ -117,37 +118,50 @@ part up (`xload.s`).
 
 ## Speed
 
-Measured in the emulator (PAL), with the `td: fps10=` lines:
+Measured in the emulator (PAL) with the `td: fps10=` lines, turning on the
+spot at the start of a round (`inview10` is ten times the objects in view):
 
 | | |
 |---|---|
-| **frame rate** | **3 to 4.6 fps** in play with 2–3 enemies; about 3 on average over the test's autopilot game |
-| a tick of the rules | 35–43K cycles in play (the autopilot adds about 15K); 12.5 a second |
-| a picture | 200–350K cycles: walls ~80K, ~30K an object near by |
+| **round 1** (2 enemies, 2–4 objects in view) | **3.7–5.5 fps**; 5.1–5.9 in play |
+| **round 4** (4 enemies) | 2.7–4.1 fps; 2.7 with ~8 objects in view |
+| **round 8** (7 enemies) | about 3 fps |
+| over the test's autopilot game | 2.9–7.8 fps, 3.9 on average |
+| a tick of the rules | 33K cycles in round 1, 42–56K in round 4, 72–80K in round 8; 12.5 a second |
+| a picture | 175–360K cycles: objects ~65%, walls ~25%, clearing ~7% |
 
-That is below the 5+ fps target.
+That meets 5 fps only with few objects in view; the 5+ fps target with
+~10 objects in view isn't met.
 
-The rules went from 60–150K cycles a tick to 35–43K, by profiling with
-`projects/a8_3d/tools/profile.py` and timing each part of a tick:
+**What the time goes on now.** The picture uses a8_3d's asm path for
+upright convex objects (`a3d_prism`, `a3d_pyramid`, `a3d_wallquad`): one
+call an object, from its centre in camera space, its turn and its sizes.
+The C path is kept only for an object with a corner nearer than the near
+plane. Most of a picture is now the fill inside a8_3d. In big rounds the
+rules take most of the CPU: 7 enemies at 12.5 ticks a second is ~1M
+cycles a second.
+
+The rules went from 60–150K cycles a tick (round 1) to 33K, by profiling
+with `projects/a8_3d/tools/profile.py` and timing each part of a tick:
 
 - an asm obstacle query over an 8 × 8 grid of the arena;
 - asm atan2 and length;
 - the shells' flight in asm: it stops only at a step where something may
   happen;
 - the tanks' drive and the fast path of their push-out in asm;
+- a8_3d's asm multiply-divide for pushing tanks apart (no 32-bit maths);
 - byte counters instead of modulos;
-- the minds every other tick.
+- the minds every other tick, every fourth with more than 3 enemies.
 
-The picture went from 450–750K to 200–350K, by:
+The picture went from 450–750K to 175–360K, by:
 
-- clipping the walls in 2D;
-- testing faces by comparisons;
-- turning each object's centre once;
+- a8_3d's convex-object path (it replaced my per-face C);
+- clipping the walls in 2D, with a 16-bit division;
 - level of detail and the draw caps.
 
-**Still to come:** a8_3d is getting a fast asm path for convex prisms and
-boxes (one call an object, no per-face C round trips). Moving to it is the
-remaining step towards 5 fps.
+**Still to come.** a8-3d is working on a faster fill for upright quads, and
+tank_duel will take it when it lands. After that, the next steps are the
+rules' remaining C in asm (`tanks_apart`, `think`).
 
 ## Test
 
@@ -166,7 +180,7 @@ remaining step towards 5 fps.
 
 ## Not done
 
-- 5+ fps (see Speed).
+- 5+ fps with ~10 objects in view (see Speed).
 - The high scores are not saved.
 - PAL only measured. On NTSC the rules' 12.5 ticks a second come from 4
   frames of 60, so they run 20% fast.

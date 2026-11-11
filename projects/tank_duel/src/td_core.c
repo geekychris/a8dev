@@ -201,10 +201,17 @@ void td_new_game(uint32_t seed, uint8_t round)
 
 /* ---------- moving and colliding ---------- */
 /* (dx, dz) * reach / d: out to the reach along (dx, dz) */
+#ifdef HOST
 static pos along(pos v, pos reach, uint16_t d)
 {
     return (pos)(((int32_t)v * reach) / (int16_t)d);
 }
+#else
+/* port: a3d's asm multiply-divide (~700 cycles; the same truncation) */
+extern int16_t a3d_mda, a3d_mdb;
+extern int16_t __fastcall__ a3d_muldiv_(int16_t c);
+#define along(v, reach, d) (a3d_mda = (v), a3d_mdb = (reach), a3d_muldiv_((int16_t)(d)))
+#endif
 
 void push_out(Tank *t)
 {
@@ -517,12 +524,13 @@ void td_tick(uint8_t in)
     if (in & TD_IN_FIRE) td_fire(0);
     T1(0); T0();
     /* the enemies */
-    /* port: each enemy thinks every other tick (half of them a tick) and
-       drives on its last decision in between */
+    /* port: each enemy thinks every other tick (half of them a tick), every
+       fourth with more than 3 enemies, and drives on its last decision in
+       between */
     for (k = 1; k < G.ntanks; k++) {
         Tank *t = &G.tk[k];
         if (!t->alive || t->held) continue;
-        if (((k + G.tick) & 1) || !t->want) think(k);
+        if (!(((k + G.tick) & (G.ntanks > 4 ? 3 : 1))) || !t->want) think(k);
         else {
             if (t->reload > 0) t->reload--;
             drive(t, t->want, t->speed);
