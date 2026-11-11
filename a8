@@ -81,6 +81,15 @@ case "$cmd" in
            need_a8dev; need_emu
            mkdir -p "$ROOT/build"
            fails=0
+           # tests must write only to (git-ignored) build directories: remember the
+           # working tree now (status + content hash of every changed/untracked file)
+           tree_state() {
+             git -C "$ROOT" status --porcelain=v1 --untracked-files=all | while IFS= read -r l; do
+               f="${l:3}"; f="${f#\"}"; f="${f%\"}"
+               printf '%s %s\n' "$l" "$(git -C "$ROOT" hash-object "$f" 2>/dev/null || echo gone)"
+             done | sort
+           }
+           tree_before="$(tree_state)"
            for d in "$ROOT"/projects/*/; do
              p="$(basename "$d")"; [ -f "$d/Makefile" ] || continue
              step "$p"
@@ -105,6 +114,15 @@ case "$cmd" in
                grep -E "FAIL|Error|error" "$ROOT/build/selftest-$n.log" | tail -20; warn "$n failed (build/selftest-$n.log)"; fails=$((fails+1))
              fi
            done
+           step "the run left the working tree as it was"
+           changed="$(diff <(printf '%s\n' "$tree_before") <(tree_state) | grep '^>' | cut -c3- || true)"
+           if [ -n "$changed" ]; then
+             printf '%s\n' "$changed" | sed 's/^/    /'
+             warn "tests wrote files outside build/ (above: git status + content hash after the run); write test output to build/"
+             fails=$((fails+1))
+           else
+             ok "no tracked or new files changed (tests wrote only to build/)"
+           fi
            [ "$fails" -eq 0 ] && ok "all pass" || die "$fails check(s) failed" ;;
   a8dev)   need_a8dev; exec "$A8DEV" "$@" ;;
   help|-h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//' ;;
