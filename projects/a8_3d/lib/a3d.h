@@ -37,7 +37,9 @@
 
 #define A3D_W       160
 #define A3D_MAXH    96
-#define A3D_MAXV    64          /* transformed vertices */
+#ifndef A3D_MAXV
+#define A3D_MAXV    64          /* transformed vertices (a game can ask for fewer: -DA3D_MAXV=32, C and asm) */
+#endif
 #define A3D_MAXP    16          /* vertices of one polygon (after clipping) */
 #define A3D_NEAR    8           /* near plane, camera units */
 #define A3D_TEXT    ((uint8_t *)0xAF80)

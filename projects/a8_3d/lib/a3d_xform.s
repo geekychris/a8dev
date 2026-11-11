@@ -13,7 +13,11 @@
 
         .include "a3d_mul.inc"
 
+.ifdef A3D_MAXV
+MAXV    = A3D_MAXV
+.else
 MAXV    = 64
+.endif
 NEAR    = 8
 
 .segment "ZEROPAGE"
@@ -21,7 +25,13 @@ s0:     .res 2                  ; the transform's three row sums
 s1:     .res 2
 s2:     .res 2
 
+; with A3D_LOWXF (asm flags) the vertices and the projection table go in
+; the SDK's LOWRAM too (A3D_LOWTAB puts the other tables there)
+.ifdef A3D_LOWXF
+.segment "LOWRAM"
+.else
 .segment "BSS"
+.endif
 _a3d_vx:    .res MAXV*2
 _a3d_vy:    .res MAXV*2
 _a3d_vz:    .res MAXV*2
