@@ -45,6 +45,12 @@ menu     -> reads game pictures (sectors 17-264, 8 per game) with boot.s's read_
          -> FIRE: JMP $0709 with A = game + 1 -> boot.s loads that XEX and runs it
 ```
 
+The loader uses no zero page (a game's INIT segments, e.g. 130XE bank
+selects and cc65's system check, run between its segments and may use any
+of it) and resets MEMTOP from RAMTOP before each load (the menu's SDK
+start-up lowers it to $8FFF, which made cc65's system check refuse big
+games). Big XEX files with bank-loading INIT segments work.
+
 The menu's display list has a title, an ANTIC D picture band whose colours
 are set by a display-list interrupt (src/dli.s), and text below. Disk
 layout: tools/a8dev/src/a8dev/atr.py. One disk holds 31 games (the
