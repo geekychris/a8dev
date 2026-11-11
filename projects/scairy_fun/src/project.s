@@ -36,6 +36,7 @@ _pj_pathok: .res 1              ; the path is shown (autopilot on, not blinking)
 _pj_planfrom: .res 2
 _pj_plan:   .res 2              ; the plan's address (16 int16, fine units)
 i:      .res 1
+lsum:   .res 2
 nb:     .res 1
 nb2:    .res 1
 seg:    .res 2
@@ -81,6 +82,10 @@ side_fw:   .byte 0, 3, 0, 0, 0, 1, 2, 2
 .proc _project
         lda #1
         sta i
+        lda _cam_dir16          ; lsum = dir16 * 1
+        sta lsum
+        lda _cam_dir16+1
+        sta lsum+1
         lda _pj_nb
         sta nb
 loop:   ; seg = s0 + i; past the end: done
@@ -139,16 +144,12 @@ far:    ; k8 = ktab8[zr >> 3]
         ldy #0
         lda (ptr1),y
         sta k8
-        ; line16 = dir16 * i - lfrac
-        lda i
-        sta _mk
-        lda _cam_dir16
-        ldx _cam_dir16+1
-        jsr _mult
+        ; line16 = dir16 * i - lfrac (lsum: dir16 * i, kept as i grows)
         sec
+        lda lsum
         sbc _pj_lfrac
         sta t
-        txa
+        lda lsum+1
         sbc _pj_lfrac+1
         ; >> 4 (arithmetic)
         cmp #$80
@@ -388,20 +389,46 @@ nopath: ldx nb
         lda nb
         cmp #NB
         beq done
-nexti:  lda i
+nexti:  lda i                   ; the step: 1 to 6, 2 to 12, 4 beyond; lsum += dir16 * step
         cmp #6
         bcc s1
         cmp #12
         bcc s2
         clc
         adc #4
-        jmp sset
+        sta i
+        lda _cam_dir16
+        sta t
+        lda _cam_dir16+1
+        asl t
+        rol a
+        asl t
+        rol a
+        jmp sadd
 s2:     clc
         adc #2
-        jmp sset
+        sta i
+        lda _cam_dir16
+        sta t
+        lda _cam_dir16+1
+        asl t
+        rol a
+        jmp sadd
 s1:     clc
         adc #1
-sset:   sta i
+        sta i
+        lda _cam_dir16
+        sta t
+        lda _cam_dir16+1
+sadd:   sta t+1
+        clc
+        lda lsum
+        adc t
+        sta lsum
+        lda lsum+1
+        adc t+1
+        sta lsum+1
+        lda i
         cmp #33
         bcs done
         jmp loop

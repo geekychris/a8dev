@@ -114,7 +114,7 @@ fillv:  .res 2
 shtab:  .res 256                ; lw -> the shoulder, lw * 7 / 16
 
 .segment "HIA"
-DBL     = 28                    ; from here down, pairs of rows share one (render.c's list)
+DBL     = 22                    ; from here down, pairs of rows share one (render.c's list)
 rowlo:
         .repeat ROWS, I
         .if I < DBL

@@ -1,0 +1,7 @@
+{
+  "title": "ScAIry Fun",
+  "ready": "scairy: ready",
+  "description": "Ride in a car that drives itself: take the wheel just before its blind spots, then hand it back.",
+  "controls": "FIRE autopilot on/off, stick steers and brakes (takes over), START pauses",
+  "picture": "screenshots/play.png"
+}

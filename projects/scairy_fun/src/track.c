@@ -263,6 +263,8 @@ int8_t lane_of(int16_t d)
     int16_t u = d >> FBITS;
     int8_t n = route_info[w.route].nl;
     if (u < 0) return -1;
-    if (u >= n * LANE_W) return n - 1;
-    return (int8_t)(u / LANE_W);
+    /* (u / LANE_W, by comparisons: at most three lanes) */
+    if (u < LANE_W || n == 1) return 0;
+    if (u < 2 * LANE_W || n == 2) return 1;
+    return 2;
 }

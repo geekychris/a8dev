@@ -3,7 +3,7 @@
 #include <stdint.h>
 #define VROWS 56                          /* the view: ANTIC D rows (2 scan lines) */
 #define HOR   14
-#define DBL_ROW 28                        /* from here down, pairs of rows show one (rows.s) */                          /* the horizon's row on flat road */
+#define DBL_ROW 22                        /* from here down, pairs of rows show one (rows.s) */                          /* the horizon's row on flat road */
 #define VIEW_LINE0 35                     /* the scan line of view row 0 */
 void render_init(void);
 void render_frame(void);

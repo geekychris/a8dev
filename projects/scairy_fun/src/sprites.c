@@ -41,6 +41,17 @@ static const uint8_t oht[OBJ_COUNT] = { 0, 22, 48, 30, 26, 22, 12, 8, 36, 14, 26
 
 static uint8_t old_y[2], old_h[2], old_my[4];
 
+/* silhouettes, 8 x 8 (from behind): a car, a truck (also the ambulance and
+   the tractor), a person or animal, debris */
+static const uint8_t sh_car[8]   = { 0x3C, 0x7E, 0x42, 0xFF, 0xFF, 0xDB, 0xFF, 0x66 };
+static const uint8_t sh_truck[8] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xDB, 0xFF, 0x66 };
+static const uint8_t sh_fig[8]   = { 0x18, 0x3C, 0x18, 0x3C, 0x3C, 0x3C, 0x24, 0x24 };
+static const uint8_t sh_deb[8]   = { 0x00, 0x00, 0x00, 0x18, 0x3C, 0x7E, 0xFF, 0xFF };
+static const uint8_t *const shape_of[OBJ_COUNT] = {
+    sh_car, sh_car, sh_truck, sh_truck, sh_fig, sh_fig, sh_deb, sh_deb, sh_truck, sh_fig, sh_fig };
+/* the middle w pixels of 8 */
+static const uint8_t cut[9] = { 0x00, 0x18, 0x18, 0x3C, 0x3C, 0x7E, 0x7E, 0xFF, 0xFF };
+
 void sprites_init(void)
 {
     pmg_init();
@@ -73,7 +84,8 @@ static uint8_t project_pt(uint16_t z, int16_t du)
 
 void sprites_frame(void)
 {
-    static uint8_t i, n, best[2], k, w8, h, size, j, *p;
+    static uint8_t i, n, best[2], k, w8, h, size, j, r, c, *p;
+    static const uint8_t *sh;
     static int16_t dz, bd[2], cd;
     static uint16_t z;
     static int16_t seg, s;
@@ -114,14 +126,19 @@ void sprites_frame(void)
         if (sy > VROWS) sy = VROWS;
         if (sy - (int16_t)h < 0) h = (uint8_t)sy;
         if (!h || sx < -40 || sx > 200) { pmg_x(n, 0); continue; }
-        j = (uint8_t)(0xFF << (8 - w8));
+        /* its shape: an 8-row silhouette sampled to h rows, cut to w8
+           pixels (centred); h rows of two scan lines */
+        sh = shape_of[obj_type[i]];
+        j = cut[w8];
         old_y[n] = LINE(sy - h);
         old_h[n] = h << 1;
-        memset(p + old_y[n], j, old_h[n]);
-        if (h >= 3 && w8 >= 3)            /* a window band */
-            p[old_y[n] + 2] = p[old_y[n] + 3] = j & (uint8_t)~(0x80 >> (w8 >> 1));
+        for (r = 0; r < h; ++r) {
+            c = sh[(r << 3) / h] & j;
+            p[old_y[n] + (r << 1)] = c;
+            p[old_y[n] + (r << 1) + 1] = c;
+        }
         pmg_size(n, size);
-        pmg_x(n, (uint8_t)(PMG_X0 + sx - ((w8 << size) >> 1) - (size == 3 ? w8 : 0)));
+        pmg_x(n, (uint8_t)(PMG_X0 + sx - (4 << size)));   /* (the shape is centred in 8 bits) */
         pmg_color(n, obj_type[i] == OBJ_CAR ? car_cols[obj_colour[i]] : ocol[obj_type[i]]);
     }
 

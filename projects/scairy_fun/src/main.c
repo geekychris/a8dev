@@ -17,6 +17,7 @@
 
 extern void display_install(void);
 extern void os_off(void);
+extern uint8_t take_latch(void);         /* (os.s) the presses since the last call */
 
 #define HUD   render_hud()                /* 20 (ANTIC 6) */
 #define MSG   render_msg()                /* 2 x 40 (ANTIC 2) */
@@ -310,7 +311,7 @@ static void events(void)
 
 int main(void)
 {
-    static uint8_t f, in, acc, steps, prev_state, k;
+    static uint8_t f, in, acc, steps, prev_state, k, lat;
     static uint16_t idle;
     static int32_t final_score;
 
@@ -336,8 +337,11 @@ int main(void)
     for (;;) {
         f = frame_wait();
         sc_probe.frames += f;
-        in = input_read();
-        k = input_pressed();
+        /* the stick and keys now, and what was pressed since the last
+           look (a frame takes ~8: a quick press would be missed) */
+        lat = take_latch();
+        in = input_read() | lat;
+        k = input_pressed() | lat;
         if (k & IN_OPTION) { music_on ^= 1; if (music_on) music_start(); else music_stop(); }
         if (key_get() == KEY_ESC && w.state != GS_TITLE) {      /* port: ESC back to the title */
             world_init();

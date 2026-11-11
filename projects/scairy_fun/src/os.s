@@ -1,19 +1,21 @@
 ; os.s - ScAIry Fun runs with the OS ROM switched off (XL/XE PORTB bit 0),
 ; for the 14K of RAM under it (scairy_fun.cfg: the renderer and the routes
 ; run there). From projects/boing_twist/src/os.s (a8-big's), without the
-; 130XE banks or the input latch: it stands in for the parts of the OS the
+; 130XE banks: it stands in for the parts of the OS the
 ; game and the a8dev SDK rely on:
 ;
 ;   NMI   a DLI goes to (VDSLST); the vertical blank counts RTCLOK, copies
 ;         the shadows the SDK writes (SDMCTL, SDLSTL, CHBAS, GPRIOR, the
 ;         colours) to the chips, reads the joysticks into STICK0/STRIG0
-;         and calls (VVBLKD) like the OS's deferred VBI
+;         and calls (VVBLKD) like the OS's deferred VBI; it latches the
+;         presses (stick, FIRE, console keys) since the game last looked
+;         (take_latch): the game draws a frame in ~8, a press can be shorter
 ;   IRQ   a key press puts its code in CH ($2FC), as the OS does
 ;
 ; The ROM font is copied to $B800 first (text rows: CHBAS $B8). RESET on
 ; an XL/XE resets the MMU, so the OS comes back and boots as usual.
 
-        .export _os_off, _os_vbi_exit
+        .export _os_off, _os_vbi_exit, _take_latch, _in_held
         .importzp ptr1, ptr2
 
 PORTB   = $D301
@@ -54,6 +56,16 @@ FONT    = $B800
 
 .segment "LOWDATA"
 irq_a:  .byte 0
+_in_latch: .byte 0              ; IN_* bits that went down since take_latch()
+_in_held:
+in_prev: .byte 0                ; IN_* bits held at the last vertical blank
+CONSOL  = $D01F
+; STICK0 (active low: 1 up, 2 down, 4 left, 8 right) -> IN_LEFT 1, IN_RIGHT 2, IN_UP 4, IN_DOWN 8
+stick_in:
+        .repeat 16, i
+        .byte   ((i & 4) = 0) * 1 + ((i & 8) = 0) * 2 + ((i & 1) = 0) * 4 + ((i & 2) = 0) * 8
+        .endrepeat
+
 
 .segment "LOWCODE"
 nmi:    bit     NMIST
@@ -101,6 +113,28 @@ nmi:    bit     NMIST
         sta     STRIG0
         lda     TRIG1
         sta     STRIG1
+        ; the presses since the game last looked (it may be busy for frames)
+        ldx     STICK0
+        lda     stick_in,x
+        ldx     STRIG0
+        bne     @nofire
+        ora     #$10
+@nofire: sta    irq_a
+        lda     CONSOL
+        eor     #7
+        and     #7
+        asl
+        asl
+        asl
+        asl
+        asl
+        ora     irq_a
+        tax
+        eor     in_prev
+        stx     in_prev
+        and     in_prev
+        ora     _in_latch
+        sta     _in_latch
         jmp     (VVBLKD)
 ; the deferred VBI ends here (the OS's XITVBV)
 _os_vbi_exit:
@@ -128,6 +162,15 @@ irq:    sta     irq_a
         sta     IRQEN
         lda     irq_a
         rti
+
+; uint8_t take_latch(void): the latched presses, cleared
+_take_latch:
+        sei
+        lda     _in_latch
+        ldx     #0
+        stx     _in_latch
+        cli
+        rts
 
 ; void os_off(void): copy the font, switch the OS ROM off, our vectors in
 _os_off:
