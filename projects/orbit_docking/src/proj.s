@@ -527,6 +527,7 @@ _draw_polys:
 ; A = 1 (Z clear) if a3d_px/py 0, 1, 2 turn clockwise on the screen (the
 ; front), 0 if anticlockwise or in a line: the cross product of the first
 ; two edges, the deltas halved until they fit 8 bits
+MINAREA = 12
 front:  ldx     #0
         lda     _a3d_px+2
         sec
@@ -582,16 +583,22 @@ front:  ldx     #0
         MUL                             ; X low, A high
         stx     cr+2
         sta     cr+3
-        lda     cr+2                    ; cr - that, the sign
-        cmp     cr
-        lda     cr+3
-        sbc     cr+1
-        bvc     :+
-        eor     #$80
-:       bmi     @yes                    ; that < cr: positive
-        lda     #0
-        rts
+        lda     cr                      ; cr - that: twice the first triangle's area
+        sec
+        sbc     cr+2
+        sta     cr
+        lda     cr+1
+        sbc     cr+3
+        bvs     @ovf
+        bmi     @no                     ; facing away
+        bne     @yes
+        lda     cr
+        cmp     #MINAREA                ; port: slivers under 6 pixels (an arm's
+        bcc     @no                     ; side seen edge-on) aren't drawn
 @yes:   lda     #1
+        rts
+@ovf:   bmi     @yes                    ; (overflowed: the true sign is the other)
+@no:    lda     #0
         rts
 @half:  ldx     #6                      ; all four halved
 :       lda     dd+1,x
@@ -886,16 +893,7 @@ hspan:  sta     hx0
         lda     hml                     ; one byte
         and     hmr
         sta     hml
-        jmp     @go
-:       lda     hb1                     ; the whole bytes between: the unrolled
-        clc                             ; stores' entry (both lines alike)
-        sbc     hb0                     ; hb1 - hb0 - 1
-        tax
-        lda     hent_lo,x
-        sta     hjmp+1
-        lda     hent_hi,x
-        sta     hjmp+2
-@go:    lda     la_ok
+:       lda     la_ok
         bne     :+
         ldy     la
         jsr     hline
@@ -924,16 +922,14 @@ hline:  lda     _a3d_ylo,y
         eor     (a3d_p),y
         sta     (a3d_p),y
         cpy     hb1
-        bne     :+
-        rts                             ; (one byte)
-:       iny
+        beq     hl_done
+        iny
         lda     hpat
-hjmp:   jmp     hunroll
-hunroll:
-        .repeat 38
+@mid:   cpy     hb1
+        beq     hl_last
         sta     (a3d_p),y
         iny
-        .endrepeat
+        bne     @mid
 hl_last:  lda     (a3d_p),y
         eor     hpat
         and     hmr
@@ -943,15 +939,6 @@ hl_done:  rts
 
 .segment "RODATA"
 hsetl:  .byte   $FF, $3F, $0F, $03
-; the entry into hunroll for n whole bytes (0..38): 38 - n stores in
-hent_lo:
-        .repeat 39, I
-        .byte   <(hunroll + (38 - I) * 3)
-        .endrepeat
-hent_hi:
-        .repeat 39, I
-        .byte   >(hunroll + (38 - I) * 3)
-        .endrepeat
 hsetr:  .byte   $C0, $F0, $FC, $FF
 
 .segment "LOWRAM"
