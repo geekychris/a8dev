@@ -1,0 +1,7 @@
+{
+  "title": "Warden Keep",
+  "ready": "warden: ready",
+  "description": "An isometric keep in the Knight Lore manner: push the barrels, take the jewels before the clock runs out.",
+  "controls": "Stick step, FIRE begin, SELECT timed/relaxed, OPTION restart room",
+  "picture": "screenshots/play.png"
+}

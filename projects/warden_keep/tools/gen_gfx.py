@@ -1,0 +1,228 @@
+"""Warden Keep: the shapes (src/gfx.c, src/gfx.h).
+
+The original's render.cpp geometry (a 2:1 tile 32 x 16, cubes 16 high:
+fill_top_diamond, fill_left_face, fill_right_face, outline_cube) at the
+Atari's ANTIC E scale, x / 2 and y * 3 / 4: a tile 16 pixels x 12 lines,
+a cube 12 lines high. Drawn here at that size directly (sampling the
+original's 1-pixel outlines away by half lost them): a pixel is in a tile's
+diamond when its centre is, so neighbouring tiles meet exactly; outlines
+are the silhouette's edge pixels. The fill is a diamond, not the
+original's hourglass (the Spectrum port's ORIGINAL_BUGS.md).
+
+The room's shapes (2 bits a pixel, with a mask: 4 bytes a line, from 8
+pixels left of a tile's centre; `top` = the first line relative to the
+floor centre's line):
+  FLOOR  pen 1, its back edges black (so each seam is one line)
+  DOOR   black inside (missiles 0-3 give its blue: door_missiles)
+  WALL   3 cubes: top pen 2, south face pen 1, east face pen 3, a black
+         course line at each cube
+  BARREL 1 cube: top pen 3, south face pen 2, east face staves (pens 1/2)
+  BLOCK  1 cube: top pen 2, south face pen 3, east face pen 1 (port: rooms
+         3 and 4's stone blocks)
+  JEWEL  port: a cut gem twice the original's 6 x 4 speck (pens 3 and 2)
+Pens: 0 black, 1 the room's dark shade, 2 mid, 3 bright.
+
+The warden (a 2-cube pillar: its south face red, east face yellow, the top
+white with a dark notch toward its facing) as players: 0 the left 8
+pixels' face, 1 the right's, 2 and 3 the top's halves; 4 facings.
+
+Run: python3 projects/warden_keep/tools/gen_gfx.py
+"""
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parents[1]
+HW, HH, CH = 8, 6, 12           # half tile (pixels, lines), cube height (lines)
+
+
+def in_diamond(x, y, cy=0, hw=HW, hh=HH):
+    """the pixel's centre inside the diamond around (0, cy): x + 0.5"""
+    return hh * abs(2 * x + 1) + 2 * hw * abs(y - cy) < 2 * hw * hh
+
+
+def diamond_bottom(x, cy=0):
+    y = cy + HH
+    while y > cy - HH and not in_diamond(x, y, cy):
+        y -= 1
+    return y
+
+
+def cube(stack, top, left, right, courses=False, staves=False):
+    """{(x, y): pen}: a pillar of `stack` cubes on the tile at (0, 0)"""
+    p = {}
+    cy = -stack * CH
+    fh = stack * CH
+    for x in range(-HW, HW):
+        b = diamond_bottom(x, cy)
+        for y in range(b + 1, b + fh + 1):
+            pen = left if x < 0 else right
+            if courses and (y - b) % CH == 0 and y - b < fh:
+                pen = 0
+            if staves and x >= 0 and x % 2:
+                pen = 1
+            p[(x, y)] = pen
+    for x in range(-HW, HW):
+        for y in range(cy - HH, cy + HH + 1):
+            if in_diamond(x, y, cy):
+                p[(x, y)] = top
+    # the outline: the silhouette's edge, and the top's lower edges
+    edge = []
+    for (x, y) in p:
+        if any((x + dx, y + dy) not in p for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+            edge.append((x, y))
+        elif in_diamond(x, y, cy) and not in_diamond(x, y + 1, cy):
+            edge.append((x, y))
+    for e in edge:
+        p[e] = 0
+    return p
+
+
+def floor_tile(pen):
+    p = {}
+    for x in range(-HW, HW):
+        for y in range(-HH, HH + 1):
+            if in_diamond(x, y):
+                p[(x, y)] = 0 if not in_diamond(x, y - 1) else pen
+    return p
+
+
+def jewel():
+    p = {}
+    cy, hw, hh = -8, 4, 8
+    for x in range(-hw, hw):
+        for y in range(cy - hh, cy + hh + 1):
+            if in_diamond(x, y, cy, hw, hh):
+                p[(x, y)] = 2 if (y > cy and x < 0) else 3
+    edge = [(x, y) for (x, y) in p
+            if any((x + dx, y + dy) not in p for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))]
+    for e in edge:
+        p[e] = 0
+    p[(-2, cy - 2)] = 1                     # a glint's shadow
+    return p
+
+
+def room_shape(p):
+    ys = [y for (_, y) in p]
+    top, bot = min(ys), max(ys)
+    data, mask = [], []
+    for y in range(top, bot + 1):
+        for b in range(4):
+            d = m = 0
+            for k in range(4):
+                v = p.get((b * 4 + k - HW, y))
+                d <<= 2
+                m <<= 2
+                if v is not None:
+                    d |= v
+                    m |= 3
+            data.append(d)
+            mask.append(m)
+    return top, bot - top + 1, data, mask
+
+
+shapes = {
+    "FLOOR": room_shape(floor_tile(1)),
+    "DOOR": room_shape(floor_tile(0)),
+    "WALL": room_shape(cube(3, 2, 1, 3, courses=True)),
+    "BARREL": room_shape(cube(1, 3, 2, 2, staves=True)),
+    "JEWEL": room_shape(jewel()),
+    "BLOCK": room_shape(cube(1, 2, 3, 1)),
+}
+
+# the door's blue: missiles 0-3 (double width: 4 pixels each, 2 a bit, M0
+# leftmost) over the door's inside, lines -6..6
+door_m = []
+for y in range(-HH, HH + 1):
+    b = 0
+    for m in range(4):
+        for k in range(2):
+            x = m * 4 + k * 2 - HW
+            if all(in_diamond(xx, y) and in_diamond(xx, y - 1) for xx in (x, x + 1)):
+                b |= (2 >> k) << (2 * m)
+    door_m.append(b)
+
+out = ["/* generated by tools/gen_gfx.py (the original's render.cpp shapes) - do not edit */",
+       "#include <stdint.h>", '#include "gfx.h"', ""]
+names = list(shapes)
+for n in names:
+    top, h, data, mask = shapes[n]
+    out.append(f"/* {n}: {h} lines from the centre's line {top} */")
+    out.append(f"static const uint8_t {n.lower()}_dm[{2 * len(data)}] = {{")
+    pairs = [v for dm in zip(mask, data) for v in dm]
+    for i in range(0, len(pairs), 16):
+        out.append("    " + ", ".join(f"0x{v:02X}" for v in pairs[i:i + 16]) + ",")
+    out.append("};")
+    # 1 bit a pixel (its left and right 8 pixels a line): what it hides of the warden
+    m1 = []
+    for L in range(h):
+        for half in range(2):
+            b = 0
+            for k in range(8):
+                byte = mask[L * 4 + half * 2 + k // 4]
+                if (byte >> (6 - 2 * (k % 4))) & 3:
+                    b |= 0x80 >> k
+            m1.append(b)
+    out.append(f"static const uint8_t {n.lower()}_m1[{len(m1)}] = {{")
+    for i in range(0, len(m1), 16):
+        out.append("    " + ", ".join(f"0x{v:02X}" for v in m1[i:i + 16]) + ",")
+    out.append("};")
+out.append(f"const uint8_t door_missiles[{len(door_m)}] = {{" + ", ".join(f"0x{v:02X}" for v in door_m) + "};")
+out.append("const Shape shapes[SH_COUNT] = {")
+for n in names:
+    top, h, data, mask = shapes[n]
+    out.append(f"    {{{top}, {h}, {n.lower()}_dm, {n.lower()}_m1}},")
+out.append("};")
+
+# the warden: a 2-cube pillar, players 0-3, per facing
+PL_TOP = -2 * CH - HH
+NOTCH = {0: [(2, -2), (3, -2), (2, -3), (3, -3)],       # N: up-right on the screen
+         1: [(2, 1), (3, 1), (2, 2), (3, 2)],           # E: down-right
+         2: [(-4, 1), (-3, 1), (-4, 2), (-3, 2)],       # S: down-left
+         3: [(-4, -2), (-3, -2), (-4, -3), (-3, -3)]}   # W: up-left
+pl = []
+for facing in range(4):
+    c = cube(2, 6, 7, 5)
+    for (x, y) in NOTCH[facing]:
+        c[(x, y - 2 * CH)] = 0
+    ys = [y for (_, y) in c]
+    H = max(ys) - PL_TOP + 1
+    p = [[0] * H for _ in range(4)]
+    for (x, y), v in c.items():
+        L = y - PL_TOP
+        X = x + HW
+        bit = 0x80 >> (X & 7)
+        half = 0 if X < 8 else 1
+        if v in (7, 5):
+            p[half][L] |= bit                   # a face: P0 red (left), P1 yellow (right)
+        elif v == 6:
+            p[2 + half][L] |= bit               # the top: P2, P3 white
+    pl.append((H, p))
+H = max(h for h, _ in pl)
+out.append(f"/* the warden: {H} lines from the floor centre's line {PL_TOP}; per facing, players 0-3 */")
+out.append(f"const uint8_t player_pm[4][4][{H}] = {{")
+for h, p in pl:
+    out.append("    {")
+    for k in range(4):
+        out.append("        {" + ", ".join(f"0x{v:02X}" for v in p[k] + [0] * (H - h)) + "},")
+    out.append("    },")
+out.append("};")
+(HERE / "src" / "gfx.c").write_text("\n".join(out) + "\n")
+(HERE / "src" / "gfx.h").write_text(f"""/* tools/gen_gfx.py's shapes (src/gfx.c) */
+#ifndef GFX_H
+#define GFX_H
+#include <stdint.h>
+typedef struct {{ int8_t top; uint8_t h; const uint8_t *dm, *m1; }} Shape;   /* dm: mask, data x 4 a line; m1: 1-bit mask, 2 a line */
+enum {{ {", ".join("SH_" + n for n in names)}, SH_COUNT }};
+extern const Shape shapes[SH_COUNT];
+#define PL_H {H}
+#define PL_TOP ({PL_TOP})
+extern const uint8_t player_pm[4][4][PL_H];
+extern const uint8_t door_missiles[{len(door_m)}];      /* lines -6..6 of the door tile */
+#endif
+""")
+if __name__ == "__main__":
+    for n in names:
+        top, h, data, mask = shapes[n]
+        print(n, top, h)
+        for L in range(h):
+            print("".join(".-+#"[(data[L * 4 + b] >> (6 - 2 * k)) & 3] if (mask[L * 4 + b] >> (6 - 2 * k)) & 3 else " "
+                          for b in range(4) for k in range(4)))
