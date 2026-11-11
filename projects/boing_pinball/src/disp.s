@@ -42,30 +42,31 @@ t2:     .res 1
 old_vbi: .res 2
 .segment "HICODE"
 
+; The next row's six values are loaded into the DLI's own immediate
+; operands beforehand (prep), so after WSYNC it only stores: all six are in
+; by about cycle 20 of the next line, in the horizontal blank, before the
+; row's first pixels and font fetches. (Loading them from the tables after
+; WSYNC took ~38 cycles: the first line of each row showed the old font and
+; colours.)
 dli:    pha
         txa
         pha
         tya
         pha
-        ldx     row
-        lda     _t_pf1,x
-        sta     t1
-        lda     _t_font,x
-        sta     t2
-        lda     _t_bk,x
-        ldy     _t_pf0,x
+v_bk:   lda     #0
+v_pf0:  ldx     #0
+v_pf1:  ldy     #0
         sta     WSYNC
         sta     COLBK
-        sty     COLPF0
-        lda     t1
-        sta     COLPF1
-        lda     _t_pf2,x
-        sta     COLPF2
-        lda     _t_pf3,x
-        sta     COLPF3
-        lda     t2
+        stx     COLPF0
+        sty     COLPF1
+v_font: lda     #0
         sta     CHBASE
-        inc     row
+v_pf2:  lda     #0
+        sta     COLPF2
+v_pf3:  lda     #0
+        sta     COLPF3
+        jsr     prep
         pla
         tay
         pla
@@ -73,8 +74,26 @@ dli:    pha
         pla
         rti
 
+; the values of table row `row` into the DLI's operands; row + 1
+prep:   ldx     row
+        lda     _t_bk,x
+        sta     v_bk+1
+        lda     _t_pf0,x
+        sta     v_pf0+1
+        lda     _t_pf1,x
+        sta     v_pf1+1
+        lda     _t_pf2,x
+        sta     v_pf2+1
+        lda     _t_pf3,x
+        sta     v_pf3+1
+        lda     _t_font,x
+        sta     v_font+1
+        inc     row
+        rts
+
 vbi:    lda     _scroll_row
         sta     row
+        jsr     prep
         lda     _scroll_fine
         sta     VSCROL
         ; the first table row's address: map + scroll_row * 40

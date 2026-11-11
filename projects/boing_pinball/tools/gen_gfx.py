@@ -646,13 +646,6 @@ def write(o):
     print(f"  fonts {len(o['fontbytes'])} bytes, map {len(o['map'])}, flips {len(o['flipbytes'])}")
 
 
-if __name__ == "__main__":
-    o = main()
-    write(o)
-    if "--preview" in sys.argv:
-        preview(o["rp"], o["tiles"], os.path.join(PROJ, "build", "table_preview.png"))
-
-
 def preview(rp, tiles, path):
     im = Image.new("RGB", (320, H))
     p = im.load()
@@ -667,3 +660,10 @@ def preview(rp, tiles, path):
                     p[cx * 8 + k * 2, r * 8 + y] = c
                     p[cx * 8 + k * 2 + 1, r * 8 + y] = c
     im.resize((640, H * 2)).save(path)
+
+
+if __name__ == "__main__":
+    o = main()
+    write(o)
+    if "--preview" in sys.argv:
+        preview(o["rp"], o["tiles"], os.path.join(PROJ, "build", "table_preview.png"))
