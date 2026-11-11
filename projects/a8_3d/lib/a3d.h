@@ -160,6 +160,31 @@ extern void __fastcall__ a3d_xform_(const int8_t *verts);
 extern void __fastcall__ a3d_project_(uint8_t n);
 #define a3d_project(first, n) (a3d_xfirst = (first), a3d_project_(n))
 
+/* upright convex objects in one call (a3d_prism.s, all asm): set the
+   a3d_pr_* fields, call; 0 = drawn, 1 = a corner is nearer than the near
+   plane (nothing drawn: clip it some other way). They use vertices 0-7.
+   The footprint in the object's units: corners (-hw, z0) (+hw, z0)
+   (+hw, z1) (-hw, z1), turned by Q7 (c, s): X = x c - z s, Z = x s + z c,
+   plus the camera-space centre (pr_x, pr_z); heights y0 (foot) and y1 (top)
+   in camera units relative to the eye (a3d_vy's scale: aspect applied).
+   Sides: 0 = z0 (back), 1 = +x (right), 2 = z1 (front), 3 = -x (left),
+   4 = top. pr_vis: bit n draws side n (0: auto - the sides whose corners
+   go left to right on the screen, the top when y1 < 0). pr_shade: a3d_shade
+   indices (0-6) for back, front, left, right, top. */
+extern int16_t a3d_pr_x, a3d_pr_z, a3d_pr_y0, a3d_pr_y1;
+extern int8_t a3d_pr_c, a3d_pr_s, a3d_pr_z0, a3d_pr_z1;
+extern uint8_t a3d_pr_hw, a3d_pr_vis, a3d_pr_far, a3d_pr_shade[5];
+/* the box; with a3d_pr_far = 1, one quad from its leftmost to its
+   rightmost corner in shade[0] (far away) */
+extern uint8_t a3d_prism(void);
+/* a square pyramid: the footprint at y0, the apex at y1 over its middle
+   (sides by the fill's own winding test when pr_vis = 0) */
+extern uint8_t a3d_pyramid(void);
+/* an upright quad from camera-space floor points a to b, heights y0..y1,
+   shade[0], seen from either side (walls) */
+extern int16_t a3d_pr_ax, a3d_pr_az, a3d_pr_bx, a3d_pr_bz;
+extern uint8_t a3d_wallquad(void);
+
 /* a face through transformed vertices idx[0..n-1] (clockwise seen from the
    front): near-clipped, back-face culled, screen-clipped and filled with the
    current pattern. Returns 1 if anything was drawn. */

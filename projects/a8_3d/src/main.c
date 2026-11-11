@@ -39,6 +39,7 @@ static void bench_end(const char *what, uint8_t n)
 }
 
 /* ---------------------------------------------------------------- checks */
+extern int16_t a3d_vcx, a3d_vcy;
 static uint8_t *back_line(uint8_t y)
 {
     extern uint8_t a3d_ylo[96], a3d_yhi[96];
@@ -48,6 +49,17 @@ static uint8_t *back_line(uint8_t y)
 static void check(const char *what, uint8_t ok)
 {
     a8_log("check: %s ok=%u\n", what, ok);
+}
+
+/* a3d_prism's fields for an 80-unit cube at depth z turned by (c, s) */
+static void pr_cube(int16_t z, int8_t c, int8_t s)
+{
+    uint8_t k;
+    a3d_pr_x = 0; a3d_pr_z = z; a3d_pr_c = c; a3d_pr_s = s;
+    a3d_pr_hw = 40; a3d_pr_z0 = -40; a3d_pr_z1 = 40;
+    a3d_pr_y0 = -40; a3d_pr_y1 = 40;
+    a3d_pr_vis = 0; a3d_pr_far = 0;
+    for (k = 0; k < 5; ++k) a3d_pr_shade[k] = 0;
 }
 
 static void checks(void)
@@ -134,6 +146,52 @@ static void checks(void)
     a3d_xform(0, 1, v1);
     check("near", a3d_vclip[0] == 1);
     (void)idx;
+
+    /* a3d_prism: an 80-unit cube straight ahead at 200: drawn, its near
+       side (z0: the back) in shade 6 (colour 3) and nothing else seen */
+    a3d_clear(0);
+    pr_cube(200, 127, 0);
+    a3d_pr_shade[0] = 6;
+    ok = a3d_prism() == 0;
+    l = back_line(a3d_vcy);
+    check("prism_draw", ok && l[20] == 0xFF && l[19] == 0xFF && l[0] == 0);
+    /* nearer than the near plane: 1, nothing drawn */
+    a3d_clear(0);
+    pr_cube(30, 127, 0);
+    ok = a3d_prism() == 1;
+    for (y = 0; y < 40; ++y) if (back_line(y)[20]) ok = 0;
+    check("prism_near", ok);
+    /* turned 45 degrees: two sides seen (back and left: shades 6 and 2,
+       colour 3 right of the middle, colour 1 left of it) */
+    a3d_clear(0);
+    pr_cube(200, 90, 90);
+    a3d_pr_shade[0] = 6; a3d_pr_shade[2] = 2;
+    a3d_prism();
+    l = back_line(a3d_vcy);
+    check("prism_turned", l[17] == 0x55 && l[22] == 0xFF);
+    /* the top, below the eye */
+    a3d_clear(0);
+    pr_cube(200, 127, 0);
+    a3d_pr_y0 = -100; a3d_pr_y1 = -20;
+    a3d_pr_shade[4] = 2;
+    a3d_prism();
+    p = 0;
+    for (y = 0; y < a3d_h; ++y) if (back_line(y)[20] == 0x55) ++p;
+    check("prism_top", p > 1);
+    /* a pyramid and a wall quad draw at the middle */
+    a3d_clear(0);
+    pr_cube(200, 127, 0);
+    a3d_pr_y1 = 60;
+    for (y = 0; y < 5; ++y) a3d_pr_shade[y] = 6;
+    ok = a3d_pyramid() == 0;
+    ok = ok && back_line(a3d_vcy + 4)[20];
+    a3d_clear(0);
+    a3d_pr_ax = 60; a3d_pr_az = 200; a3d_pr_bx = -60; a3d_pr_bz = 200;   /* (right to left: either side) */
+    a3d_pr_y0 = -30; a3d_pr_y1 = 30;
+    a3d_pr_shade[0] = 6;
+    p = a3d_wallquad();
+    ok = ok && p == 0 && back_line(a3d_vcy)[20];
+    check("prism_pyr_wall", ok);
     a3d_clear(0);
 }
 
@@ -216,6 +274,22 @@ static void bench(void)
         }
     }
     bench_end("cube_faces", 20);
+
+    /* the same size of box upright, turned, through a3d_prism */
+    bench_start();
+    for (i = 0; i < 20; ++i) {
+        pr_cube(300, 110, 64);
+        a3d_pr_shade[0] = 6; a3d_pr_shade[1] = 2; a3d_pr_shade[2] = 4; a3d_pr_shade[3] = 3; a3d_pr_shade[4] = 5;
+        a3d_prism();
+    }
+    bench_end("prism_box", 20);
+    bench_start();
+    for (i = 0; i < 20; ++i) {
+        pr_cube(300, 110, 64);
+        a3d_pr_vis = 0x80;
+        a3d_prism();
+    }
+    bench_end("prism_nofill", 20);
 }
 
 /* ---------------------------------------------------------------- demo */
