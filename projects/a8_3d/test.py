@@ -26,7 +26,7 @@ BUDGET = {
     "line_steep88": 19500, "xform8": 19000, "mat_ypr": 12500,
     "mat_mul": 6500, "cube_faces": 49000, "prism_box": 39000, "prism_nofill": 11700,
 }
-CHECKS = ["mul8s", "mulf", "muldiv", "fill_rect", "backface", "clip", "clear_dirty", "near", "prism_draw", "prism_near", "prism_turned", "prism_top", "prism_pyr_wall"]
+CHECKS = ["mul8s", "mulf", "muldiv", "fill_rect", "backface", "clip", "clip_skip", "clear_dirty", "near", "prism_draw", "prism_near", "prism_turned", "prism_top", "prism_pyr_wall"]
 
 
 def check(name, ok, detail=""):

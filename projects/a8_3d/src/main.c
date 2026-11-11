@@ -127,6 +127,20 @@ static void checks(void)
     a8_log("check: clipdump %x %x %x %x\n", l[0], l[9], l[11], back_line(0)[0]);
     check("clip", l[0] == 0xFF && l[11] == 0 && back_line(0)[0] == 0xFF);
 
+    /* an edge from far above and left (skipped to line 0) into the screen:
+       the walker took its fast path on the wrong corner and crashed */
+    a3d_clear(0);
+    a3d_px[0] = 40;     a3d_py[0] = 39;
+    a3d_px[1] = -13711; a3d_py[1] = 436;
+    a3d_px[2] = -13711; a3d_py[2] = -374;
+    a3d_px[3] = 40;     a3d_py[3] = 37;
+    a3d_poly(4);
+    /* (it reaches the screen only near its right corners: x 0..6 on line 36) */
+    ok = back_line(36)[0] == 0xFF && !back_line(20)[0] && !back_line(0)[0];
+    for (y = 0; y < 40; ++y)
+        if (back_line(y)[11]) ok = 0;
+    check("clip_skip", ok);
+
     /* dirty rectangle: clearing it leaves nothing */
     a3d_clear_dirty(0);
     ok = 1;
