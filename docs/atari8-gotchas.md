@@ -50,3 +50,14 @@ Things that cost time, so they don't again.
   key code until cleared; `SKSTAT` bit 2 = 0 while a key is held, `KBCODE` =
   which. Console keys (CONSOL) and joysticks (PIA, via STICK0/STRIG0
   shadows) are separate hardware, so they combine freely.
+
+## Speed
+
+- cc65 C is slow for byte loops: a pattern computed per byte with 16-bit
+  arithmetic (`(i * 7 + b * 31 + (i >> 8)) & 0xFF`) took banktest 5,200 frames
+  (100 s) for 64K. A table plus one add per byte in C was ~100 cycles a byte;
+  an indexed asm loop (`lda tab,y / adc / sta buf,y / iny / bne`) is ~16. The
+  64K fill + verify now takes 300 frames. Keep inner loops in asm, use 8-bit
+  indexes, and use memcpy/memcmp/memset (asm in cc65's library).
+- ANTIC's screen DMA takes ~30% of the CPU with a text screen; `gfx_off()`
+  around a long computation gets it back.

@@ -94,7 +94,7 @@ def test_session():
         c.call("load_state", path="selftest")
         check("save_state / load_state round trip", c.call("read_mem", addr="bx", length=1)["hex"] == v, p)
         r = c.call("load", path=str(BANK))
-        check("banktest passes in the session", c.call("run_until", text="A8:DONE", max_frames=8000)["found"])
+        check("banktest passes in the session", c.call("run_until", text="A8:DONE", max_frames=3000)["found"])
         r = c.call("read_mem", addr=0, length=4, bank=1)
         check("read_mem bank=1", r["hex"] == bytes((i * 7 + 31 + (i >> 8)) & 0xFF for i in range(4)).hex(), str(r))
         check("memory_map", isinstance(c.call("memory_map"), dict))

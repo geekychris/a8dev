@@ -16,14 +16,19 @@
 /* buffers outside the bank window: this program's BSS ends above $4000,
    so put them in LOWBSS (right after the start-up code, below $4000) */
 #pragma bss-name (push, "LOWBSS")
-static uint8_t buf[256];
+uint8_t buf[256];      /* (not static: src/page.s fills them) */
+uint8_t want[256];
 static uint8_t main_sig[16];
 #pragma bss-name (pop)
 
-static uint8_t pattern(uint8_t bank, uint16_t i)
-{
-    return (uint8_t)(i * 7 + bank * 31 + (i >> 8));
-}
+/* pattern(b, i) = (i * 7 + b * 31 + (i >> 8)) & 0xFF. Within page p
+   (i = p * 256 + j) that is j * 7 + (b * 31 + p): a table plus one add, so
+   the 6502 never multiplies. The first version computed it per byte in
+   16-bit C and took 5,200 frames for the 64K; page.s fills a page with an
+   indexed asm loop. The log reports the frame counts. */
+uint8_t times7[256];
+extern void __fastcall__ fill_buf(uint8_t base);
+extern void __fastcall__ fill_want(uint8_t base);
 
 int main(void)
 {
@@ -46,24 +51,24 @@ int main(void)
         for (;;) ;
     }
 
-    for (b = 0; b < banks; ++b) {
+    a8_log("banktest: start frames=%u\n", RTCLOK1 * 256 + RTCLOK2);
+    { uint8_t j = 0, v = 0; do { times7[j] = v; v += 7; } while (++j); }
+    for (b = 0; b < banks; ++b)
         for (page = 0; page < 64; ++page) {
-            for (i = 0; i < 256; ++i) buf[i] = pattern(b, (page << 8) | i);
+            fill_buf((uint8_t)(b * 31 + page));
             xe_bank_write(b, page << 8, buf, 256);
         }
-    }
+    a8_log("banktest: filled frames=%u\n", RTCLOK1 * 256 + RTCLOK2);
     for (b = 0; b < banks; ++b) {
         sum = 0;
         for (page = 0; page < 64; ++page) {
-            memset(buf, 0, sizeof buf);
+            fill_want((uint8_t)(b * 31 + page));
             xe_bank_read(b, page << 8, buf, 256);
-            for (i = 0; i < 256; ++i) {
-                if (buf[i] != pattern(b, (page << 8) | i)) {
-                    if (!bad) a8_log("banktest: mismatch bank=%u off=%x got=%x\n", b, (page << 8) | i, buf[i]);
-                    bad = 1;
-                }
-                sum += buf[i];
+            if (memcmp(buf, want, 256)) {
+                if (!bad) a8_log("banktest: mismatch bank=%u page=%u\n", b, page);
+                bad = 1;
             }
+            sum += buf[page];
         }
         a8_log("banktest: bank=%u ok=%u sum=%x first=%x\n", b, bad ? 0 : 1, sum, xe_bank_peek(b, 0));
         text_print_at(1, 5 + b, "BANK");
@@ -74,6 +79,7 @@ int main(void)
     if (xe_bank_peek(2, 0x1234) != 0x5A) { a8_log("banktest: poke/peek failed\n"); bad = 1; }
     for (i = 0; i < 16; ++i)
         if (mainwin[i] != main_sig[i]) { a8_log("banktest: main memory at $5000 changed\n"); bad = 1; break; }
+    a8_log("banktest: checked frames=%u\n", RTCLOK1 * 256 + RTCLOK2);
     a8_log("banktest: main ok=%u current=%x\n", bad ? 0 : 1, xe_bank_current);
     if (bad) a8_fail("bank check");
     else {

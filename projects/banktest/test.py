@@ -30,13 +30,17 @@ def pattern(bank, i):
 
 with Emulator(machine="130xe") as emu:
     emu.load(PROG)
-    done = emu.run_until("A8:", 8000)
+    done = emu.run_until("A8:", 3000)
     emu.run(2)
     log = emu.log(0)
     check("program reports 4 banks", "banktest: banks=4" in log, log[:200])
     check("program verifies every bank", all(f"banktest: bank={b} ok=1" in log for b in range(4)), log)
     check("main memory window intact", "banktest: main ok=1 current=ff" in log, log)
     check("A8:DONE", done and "A8:DONE" in log and "A8:FAIL" not in log, log[-200:])
+    fr = {k: int(l.split("frames=")[1]) for l in log.splitlines() for k in ("start", "filled", "checked")
+          if l.startswith(f"banktest: {k} frames=")}
+    check("64K fill + verify in under 600 frames (12 s)", fr.get("checked", 9999) - fr.get("start", 0) < 600, str(fr))
+    print(f"    fill {fr.get('filled', 0) - fr.get('start', 0)} frames, verify {fr.get('checked', 0) - fr.get('filled', 0)} frames")
     for b in range(4):
         data = emu.read_mem(0, 0x4000, bank=b)
         want = bytearray(pattern(b, i) for i in range(0x4000))
