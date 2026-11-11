@@ -95,6 +95,8 @@ Details: docs/mcp.md, docs/emulator-harness.md.
   separate, so `UP+FIRE+START` works but two letters at once don't.
 - DLIs that `sta WSYNC` cost a scan line each: set the DLI bit only where a colour changes.
 - `-g` is always on: it only adds symbols to the .lbl/.dbg, not code.
+- **cc65 miscompile**: `(b ? PTR_A : PTR_B)[i] = v` with constant pointers stores to `b + i`
+  (cc65 issue #3035; our pinned 2.19 git). Assign the pointer to a variable first.
 - cc65 hot code: `#pragma static-locals (on)`; `uint8_t` indexes and byte arrays (no
   `int`-indexed or `int * const` access: cc65 calls a generic multiply); entities as
   struct-of-arrays (`ent_x[i]`), not pointer-to-struct (`e->x` is slow). docs/atari8-gotchas.md.
