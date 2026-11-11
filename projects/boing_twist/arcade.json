@@ -1,0 +1,7 @@
+{
+  "title": "Boing Twist",
+  "ready": "bt: ready",
+  "description": "A twisty puzzle on the Boing ball: twist its bands and flip its halves until the picture is whole.",
+  "controls": "Stick: band + twist, FIRE flips, SELECT undo, OPTION peek",
+  "picture": "screenshots/play.png"
+}

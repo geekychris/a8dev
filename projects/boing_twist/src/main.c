@@ -42,13 +42,13 @@ int main(void)
         a8_log("bt: selftest hash=%08lX\n", h);
     }
     SDMCTL = 0;
-    memset((void *)0xA000, 0, 0x2000);
+    memset((void *)0xA000, 0, 0x1800);    /* not the font at $B800 */
+    memset((void *)0xBC00, 0, 0x400);
     pmg_init();
     sound_init();
     frame_init();
     game_init();
     disp_start();
-    SDLSTL = 0xBC00;
     SDMCTL = 0x22 | 0x1C;                  /* normal playfield, DL DMA, players + missiles single line */
     a8_log("bt: ready pal=%u\n", frame_is_pal() ? 1 : 0);
     for (;;) {

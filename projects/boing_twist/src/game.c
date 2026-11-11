@@ -43,7 +43,7 @@ static uint8_t anim_kind, anim_len, anim_t, auto_solve, timer_running, sec_ticks
 static uint16_t off16, target16;          /* the turn: texels x 256 */
 static uint16_t scene_t, seed_ticks;
 static uint8_t qh, qt;
-static uint8_t ball_dirty, hud_dirty, fire_held, fire_used, prev_console;
+static uint8_t ball_dirty, hud_dirty, fire_held, fire_used;
 static uint16_t best_mv[NPICS][4], best_s[NPICS][4];
 static uint8_t title_page;
 
@@ -56,7 +56,7 @@ static const char *const level_names[] = { "EASY", "MEDIUM", "HARD", "EXPERT" };
 
 /* ------------------------------------------------------------ text */
 static uint8_t *text_at(uint8_t row) { return TEXT_ROWS + (uint16_t)row * 40; }
-static uint8_t *big_at(void) { return TEXT_ROWS + 80; }
+static uint8_t *big_at(void) { return BIG_ROW; }
 
 static uint8_t scode(char ch)
 {
@@ -66,7 +66,7 @@ static uint8_t scode(char ch)
     return c;
 }
 static void put(uint8_t *p, const char *s) { while (*s) *p++ = scode(*s++); }
-static void text_clear(void) { memset(TEXT_ROWS, 0, 80 + 40); }
+static void text_clear(void) { memset(TEXT_ROWS, 0, 160 + 20); }
 static void text(uint8_t x, uint8_t row, const char *s) { put(text_at(row) + x, s); }
 static void big(const char *s)
 {
@@ -153,6 +153,7 @@ static void enqueue(uint8_t kind, int16_t m)
 static void face_half(uint8_t k) { target16 = (uint16_t)ball_half_turn(k) << 8; }
 
 static void set_screen(uint8_t s);
+static void layout(void);
 
 static void enter_solved(void)
 {
@@ -257,7 +258,7 @@ static void start_game(void)
     play_level = lv;
     play_pic = sel_pic;
     bt_init(&P, bt_levels[lv].bands, bt_levels[lv].segs);
-    ball_picture(play_pic, &P);
+    ball_picture(play_pic, &P, 1);
     seed = bt_start_level(&P, lv, seed, -1);
     a8_log("bt: play pic=%u level=%u grid=%dx%d scramble=%d seed=%lu\n", play_pic, lv, P.bands, P.segs, P.nscramble,
            seed);
@@ -301,9 +302,10 @@ static uint8_t next_allowed(uint8_t from, int8_t d, uint8_t level)
 static void show_picture(uint8_t pic, uint8_t level)
 {
     bt_init(&P, bt_levels[level].bands, bt_levels[level].segs);
-    ball_picture(pic, &P);
+    ball_picture(pic, &P, 0);
     ball_texture(&P, 1);
     ball_dirty = 1;
+    a8_log("bt: preview pic=%u level=%u\n", pic, level);
 }
 
 static void choose_picture(uint8_t i)
@@ -325,11 +327,10 @@ static void change_row(int8_t d)
     case 1: choose_picture(next_allowed(sel_pic, d, sel_level)); break;
     case 2: ball_room = (uint8_t)((ball_room + d + NROOMS) % NROOMS); break;
     }
+    layout();                                  /* the picture's colours, the room */
     hud_dirty = 1;
     ball_dirty = 1;
 }
-
-static void layout(void);
 
 static void set_screen(uint8_t s)
 {
@@ -446,9 +447,20 @@ static void entry_input(uint8_t edge, uint8_t key)
 
 static void input(void)
 {
-    uint8_t held = input_read(), edge = input_pressed(), key = key_get();
-    uint8_t cons = console_read(), cedge = (uint8_t)(cons & ~prev_console);
-    prev_console = cons;
+    /* the joystick and console keys from the VBI (presses latched, so a busy
+       moment loses none, and each counts once); the keyboard's from its IRQ */
+    uint8_t edge = take_latch(), held = in_held, key = key_get(), cons, cedge;
+    switch (key) {
+    case KEY_A: case 6:  edge |= IN_LEFT; key = KEY_NONE; break;     /* A, + (left arrow) */
+    case KEY_D: case 7:  edge |= IN_RIGHT; key = KEY_NONE; break;    /* D, * */
+    case KEY_W: case 14: edge |= IN_UP; key = KEY_NONE; break;       /* W, - */
+    case KEY_S: case 15: edge |= IN_DOWN; key = KEY_NONE; break;     /* S, = */
+    case KEY_SPACE:      edge |= IN_FIRE; key = KEY_NONE; break;
+    case KEY_RETURN:     edge |= IN_START; key = KEY_NONE; break;
+    }
+    if (key_held(KEY_SPACE)) held |= IN_FIRE;
+    cons = (uint8_t)(held & (IN_START | IN_SELECT | IN_OPTION));
+    cedge = (uint8_t)(edge & (IN_START | IN_SELECT | IN_OPTION));
     if (screen == SC_ENTRY) { entry_input(edge, key); return; }
     switch (screen) {
     case SC_TITLE:
@@ -533,33 +545,29 @@ static void layout(void)
     switch (screen) {
     case SC_TITLE:
     case SC_SOLVED:
-        ball_dlist(1, bounce_row, bounce_dx, 2);
-        ball_colours(V_TITLE, bounce_row, 0x90);
+        ball_screen(1, V_TITLE, bounce_row, bounce_dx, 2, 0x90);
         break;
     case SC_SELECT:
-        ball_dlist(1, 10, 8, 4);
-        ball_colours(V_TITLE, 10, 0x90);
+        ball_screen(1, V_TITLE, 10, 8, 4, 0x90);
         break;
     case SC_ENTRY:
-        ball_dlist(1, 10, 0, 4);
-        ball_colours(V_TITLE, 10, 0x90);
+        ball_screen(1, V_TITLE, 10, 0, 4, 0x90);
         break;
     default:
-        ball_dlist(0, PLAY_ROW, 0, 2);
-        ball_colours(V_PLAY, PLAY_ROW, 0x90);
+        ball_screen(0, V_PLAY, PLAY_ROW, 0, 2, 0x90);
         break;
     }
 }
 
-static void place_shadow(int8_t row, int8_t dx, uint8_t radius, uint8_t height)
+static void place_shadow(int8_t row, int8_t dx, uint8_t radius)
 {
-    uint8_t x = (uint8_t)(BALL_X + dx * 4);
+    uint8_t x = (uint8_t)(BALL_X - dx * 4);          /* the list's LMS + dx moves the picture left */
     uint8_t y = (uint8_t)(PMG_Y0 + 2 * (row + 32));      /* the ball's middle, scan lines */
     if (rooms[ball_room].wall)            /* on the back wall, down and to the right */
-        ball_shadow((uint8_t)(x + radius / 2), (uint8_t)(y - radius + 10), (uint8_t)(radius * 2 - 6), (uint8_t)(radius * 4 - 12));
+        ball_shadow((uint8_t)(x + radius / 2), (uint8_t)(y - radius * 2 + 12), (uint8_t)(radius * 2 - 4), (uint8_t)(radius * 4 - 8));
     else {                                 /* on the floor, under the ball */
-        uint8_t fy = (uint8_t)(PMG_Y0 + 2 * 82), w = (uint8_t)(radius * 2 - height / 4);
-        ball_shadow(x, (uint8_t)(fy - 6), w, 10);
+        uint8_t fy = (uint8_t)(PMG_Y0 + 2 * 82);
+        ball_shadow(x, (uint8_t)(fy - 6), (uint8_t)(radius * 2), 10);    /* port: the same at any height (as the Spectrum's) */
     }
 }
 
@@ -588,9 +596,8 @@ static void draw_ball(void)
         uint8_t sx = (uint8_t)((uint32_t)(scene_t % 400) * 256 / 400);
         bounce_row = (int8_t)(24 - (int16_t)((int32_t)up * 22 >> 8));
         bounce_dx = (int8_t)((int32_t)fix_sin(sx) * 7 >> 8);
-        ball_dlist(1, bounce_row, bounce_dx, 2);
-        ball_colours(V_TITLE, bounce_row, 0x90);
-        place_shadow(bounce_row, bounce_dx, views[V_TITLE].radius, (uint8_t)(up >> 3));
+        ball_screen(1, V_TITLE, bounce_row, bounce_dx, 2, 0x90);
+        place_shadow(bounce_row, bounce_dx, views[V_TITLE].radius);
     }
     ball_draw(views[V_TITLE].bank);
 }
@@ -686,7 +693,7 @@ void game_init(void)
     GPRIOR = 4;                            /* playfield over players: the ball hides the shadow */
     ball_room = 0;
     to_title();
-    place_shadow(24, 0, views[V_TITLE].radius, 0);
+    place_shadow(24, 0, views[V_TITLE].radius);
 }
 
 static uint8_t last_shadow_screen = 0xFF;
@@ -698,7 +705,7 @@ void game_frame(uint8_t frames)
     for (i = 0; i < frames && i < 8; ++i) tick();
     if (screen != last_shadow_screen) {
         last_shadow_screen = screen;
-        if (screen == SC_PLAY) place_shadow(PLAY_ROW, 0, views[V_PLAY].radius, 0);
+        if (screen == SC_PLAY) place_shadow(PLAY_ROW, 0, views[V_PLAY].radius);
         else if (screen == SC_SELECT || screen == SC_ENTRY) ball_shadow_off();
     }
     if (ball_dirty) {

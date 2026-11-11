@@ -448,7 +448,7 @@ def main():
         src.append("    { " + ", ".join(str(s) for s in views[k].shade) + " },")
     src.append("};")
     src.append("const Pic pics[NPICS] = {")
-    src.append('    { "THE BOING BALL", 0, 0, 0, { 0x0E, 0x44, 0x48 } },')
+    src.append('    { "THE BOING BALL", 0, 0, 0, { 0x0E, 0x34, 0x34 } },')
     for title, level, ri, addr, cols in pic_recs:
         src.append(f'    {{ "{title}", {level}, {ri}, 0x{addr:04X}, {{ 0x{cols[0]:02X}, 0x{cols[1]:02X}, 0x{cols[2]:02X} }} }},')
     src.append("};")

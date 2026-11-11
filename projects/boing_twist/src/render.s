@@ -8,6 +8,7 @@
 
         .export _disp_start, _disp_stop, _ball_draw, _flip_build, _band_rotate
         .export _bank_ok, _ball_turn, _dli_rows, _hscrol_next
+        .export _show_pending, _show_dl, _show_base, _shown
         .import _xe_bank_select
         .importzp ptr1, ptr2, ptr3, ptr4, tmp1, tmp2, tmp3, tmp4
 
@@ -26,14 +27,19 @@ VVBLKD  = $0224
 XITVBV  = $E462
 
 ; bt.h
+; two sets of colour tables (0-87 and 88-175 in each array) for the two
+; display lists: the game builds one while the other is shown (bt.h)
 TAB_BK  = $AC60
-TAB_C0  = TAB_BK + 96
-TAB_C1  = TAB_BK + 192
-TAB_C2  = TAB_BK + 288
-TAB_SH  = TAB_BK + 384
+TAB_C0  = TAB_BK + 176
+TAB_C1  = TAB_BK + 352
+TAB_C2  = TAB_BK + 528
+TAB_SH  = TAB_BK + 704
+DLISTL  = $D402
+DLISTH  = $D403
+SDLSTL  = $0230
 TEX_A   = $D800                 ; under the OS ROM (boing_twist.cfg)
 FT_A    = $B000
-SAVED   = $BDA0
+SAVED   = $BE00
 FLIPTAB = $4000                 ; bank 3
 
 .segment "LOWDATA"
@@ -41,6 +47,11 @@ _ball_turn:     .byte 0         ; Y for the bank's code: the turn (or the flip's
 _dli_rows:      .byte 0         ; rows the DLI colours (for the profiler)
 _hscrol_next:   .byte 0
 dli_row:        .byte 0
+dli_base:       .byte 0
+_show_pending:  .byte 0         ; set by the game: show _show_dl with tables from _show_base
+_show_dl:       .word 0
+_show_base:     .byte 0
+_shown:         .byte 0         ; the set being shown (0 or 1)
 t1:             .byte 0
 old_vbi:        .word 0
 
@@ -75,7 +86,22 @@ dli:    pha
         pla
         rti
 
-vbi:    lda     #0
+vbi:    lda     _show_pending
+        beq     @same
+        lda     _show_dl
+        sta     DLISTL
+        sta     SDLSTL
+        lda     _show_dl+1
+        sta     DLISTH
+        sta     SDLSTL+1
+        lda     _show_base
+        sta     dli_base
+        lda     #0
+        sta     _show_pending
+        lda     _shown
+        eor     #1
+        sta     _shown
+@same:  lda     dli_base
         sta     dli_row
         lda     _hscrol_next
         sta     HSCROL
