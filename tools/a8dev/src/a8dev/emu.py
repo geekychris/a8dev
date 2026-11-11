@@ -295,8 +295,8 @@ class Emulator:
                 "-a8h-seed", str(int(o["seed"])), "-" + self.tv]
         args.append("-a8h-paused" if self.paused else "-a8h-free")
         if self.window:
-            if o["zoom"]:
-                args += ["-win-width", str(336 * int(o["zoom"])), "-win-height", str(240 * int(o["zoom"]))]
+            z = int(o["zoom"] or 2)
+            args += ["-windowed", "-win-width", str(336 * z), "-win-height", str(240 * z)]
             if o["audio"] is False:
                 args.append("-nosound")
         else:
@@ -519,6 +519,23 @@ class Emulator:
             "frame_limit": "frame_limit", "log": "log_match", "at": "position", "to": "breakpoint",
             "signal": "signal", "cim": "cpu_jam"}
 
+    def _stop_info(self, text: str) -> dict | None:
+        """The emulator's last_stop (status) as a dict, without side effects."""
+        r = parse_reply(text)
+        if not r.get("why") or r["why"] == "none":
+            return None
+        pc = int(r.get("pc", "0"), 16)
+        out = {"why": self._WHY.get(r["why"], r["why"]), "reason": r["why"], "pc": pc,
+               "symbol": self.symbols.name_of(pc), "frame": int(r.get("frame", 0)),
+               "since_load": int(r.get("frame", 0)) - self.load_frame, "cycles": int(r.get("cycles", 0)),
+               "midframe": r.get("midframe") == "1"}
+        if "line" in r:
+            out["line"], out["xpos"] = int(r["line"]), int(r["xpos"])
+        if "id" in r:
+            i = int(r["id"])
+            out["break"] = (self._bps.get(i) or self._watches.get(i) or {}).get("desc")
+        return out
+
     def _result(self, r: dict) -> dict:
         res = {"reason": r.get("why"), "frames": int(r.get("ran", 0)), "frame": int(r.get("frame", 0)),
                "cycles": int(r.get("cycles", 0)), "pc": int(r.get("pc", "0"), 16),
@@ -647,7 +664,7 @@ class Emulator:
                 "log_end": int(r["log"]), "symbols": len(self.symbols), "emu_port": self.port,
                 "breakpoints": len(self._bps), "watchpoints": len(self._watches),
                 "signal": int(r["signal"]), "signals": int(r["signals"]), "fps": float(r.get("fps", 0)),
-                "inputs_logged": len(self._inputs), "last_stop": self.last_stop or r.get("last_stop")}
+                "inputs_logged": len(self._inputs), "last_stop": self._stop_info(r.get("last_stop", ""))}
 
     # ---------------------------------------------------- guest log
 

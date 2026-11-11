@@ -47,14 +47,17 @@ common=(--disable-download --without-mp3 --without-readline --disable-netsio --d
         --disable-pbi_xld --disable-voicebox --disable-pbi_bb --disable-pbi_mio --disable-onscreenkeyboard
         --disable-crashmenu --disable-monitorbreakpoints)
 export CPPFLAGS="${CPPFLAGS:-} -DA8H"
+# libatari800 leaves NEW_CYCLE_EXACT off; the SDL build has it on. Both must
+# emulate the same machine (a window recording replays headless).
+headless_cpp="-DNEW_CYCLE_EXACT"
 
 # headless: the libatari800 target (no SDL, no window) + the a8h main loop
 B="$THIRD_PARTY/atari800-build/headless"
 rm -rf "$B"; mkdir -p "$B"
-( cd "$B" && LIBS="-lz" CFLAGS="-O2 -g -Wno-macro-redefined -Wno-unknown-warning-option" "$SRC/configure" --target=libatari800 "${common[@]}" ) >>"$log" 2>&1 \
+( cd "$B" && CPPFLAGS="$CPPFLAGS $headless_cpp" LIBS="-lz" CFLAGS="-O2 -g -Wno-macro-redefined -Wno-unknown-warning-option" "$SRC/configure" --target=libatari800 "${common[@]}" ) >>"$log" 2>&1 \
   || { tail -30 "$log"; die "configure (headless) failed (full log: $log)"; }
 make -C "$B" -j"$(ncpu)" >>"$log" 2>&1 || { tail -30 "$log"; die "build (headless) failed (full log: $log)"; }
-cc -O2 -I"$B/src" -I"$SRC/src" -DA8H -DHAVE_CONFIG_H -o "$B/atari800-a8h" \
+cc -O2 -I"$B/src" -I"$SRC/src" -DA8H -DNEW_CYCLE_EXACT -DHAVE_CONFIG_H -o "$B/atari800-a8h" \
   "$A8_ROOT/emulator/ext/a8h_headless_main.c" "$B/src/libatari800.a" -lm -lz >>"$log" 2>&1 \
   || { tail -30 "$log"; die "link (headless) failed (full log: $log)"; }
 ok "headless emulator built"

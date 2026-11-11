@@ -20,6 +20,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <process.h>
+#include <direct.h>
 typedef SOCKET a8h_sock;
 #define A8H_BADSOCK INVALID_SOCKET
 #define a8h_close closesocket
@@ -32,6 +33,7 @@ typedef SOCKET a8h_sock;
 #include <arpa/inet.h>
 #include <poll.h>
 #include <unistd.h>
+#include <sys/stat.h>
 typedef int a8h_sock;
 #define A8H_BADSOCK (-1)
 #define a8h_close close
@@ -940,9 +942,12 @@ static void reset_counters(void)
 	rec_on = 0;
 }
 
+static int state_save(const char *path);
+static int state_load(const char *path);
+
 /* a defined power-on state: RAM zeroed, chip registers cleared, RANDOM
-   seeded, so a boot does not depend on what ran before */
-static void power_on(void)
+   seeded */
+static void raw_power_on(void)
 {
 	int i;
 	use_altirra_roms();
@@ -954,6 +959,12 @@ static void power_on(void)
 		memset(atarixe_memory, 0, atarixe_memory_size);
 	memset(under_atarixl_os, 0, sizeof(under_atarixl_os));
 	memset(under_cartA0BF, 0, sizeof(under_cartA0BF));
+	/* chip registers that survive Atari800's coldstart (no reset pin, or
+	   not cleared by its Reset): ANTIC (except WSYNC), GTIA, POKEY */
+	for (i = 0; i < 0x0f; i++)
+		if (i != 0x0a)
+			ANTIC_PutByte((UWORD) (0xd400 + i), 0);
+	ANTIC_Reset();
 	for (i = 0; i < 0x1e; i++)
 		GTIA_PutByte((UWORD) (0xd000 + i), 0);
 	GTIA_PutByte(0xd01e, 0);   /* HITCLR */
@@ -967,6 +978,91 @@ static void power_on(void)
 	srand(0);
 	ANTIC_xpos = 0;
 	reset_counters();
+}
+
+/* Atari800's coldstart leaves state behind (ANTIC's display-list engine, SIO,
+   chip internals), so a boot after a program ran could differ from a boot in
+   a fresh process. Before the first frame runs, a8h saves the power-on state
+   of every machine/TV combination; a later power-on restores it, so every
+   load starts exactly like a fresh emulator. */
+#define MAX_PRISTINE 24
+static struct {
+	char key[24];
+	char path[600];
+} pristine[MAX_PRISTINE];
+static int n_pristine = 0;
+static char pristine_dir[512] = "";
+
+static const char *config_key(void)
+{
+	static char k[24];
+	snprintf(k, sizeof(k), "%s-%s", machine_name, Atari800_tv_mode == Atari800_TV_PAL ? "pal" : "ntsc");
+	return k;
+}
+
+static void pristine_cleanup(void)
+{
+	int i;
+	for (i = 0; i < n_pristine; i++) {
+		remove(pristine[i].path);
+		{
+			char side[640];
+			snprintf(side, sizeof(side), "%s.a8h", pristine[i].path);
+			remove(side);
+		}
+	}
+	if (pristine_dir[0])
+		rmdir(pristine_dir);
+}
+
+static void power_on(void)
+{
+	int i;
+	const char *k = config_key();
+	for (i = 0; i < n_pristine; i++)
+		if (strcmp(pristine[i].key, k) == 0 && state_load(pristine[i].path))
+			break;
+	if (i == n_pristine)
+		raw_power_on();
+	/* what a state does not hold */
+	SIO_A8H_PowerOn();
+	POKEY_SetRandomCounter(opt_seed);
+	RTIME_enabled = 0;
+	srand(0);
+	ANTIC_xpos = 0;
+	reset_counters();
+}
+
+static int set_machine(const char *name, const char *tv, int basic);
+
+static void take_pristine_states(void)
+{
+	static const char *const tvs[] = { "pal", "ntsc" };
+	const char *tmp = getenv("TMPDIR");
+	char cur_m[16], cur_tv[8];
+	int m, t;
+	snprintf(cur_m, sizeof(cur_m), "%s", machine_name);
+	snprintf(cur_tv, sizeof(cur_tv), "%s", Atari800_tv_mode == Atari800_TV_PAL ? "pal" : "ntsc");
+	snprintf(pristine_dir, sizeof(pristine_dir), "%s/a8h-%ld", tmp && *tmp ? tmp : "/tmp", (long) getpid());
+#ifdef _WIN32
+	if (_mkdir(pristine_dir) != 0) {
+#else
+	if (mkdir(pristine_dir, 0700) != 0) {
+#endif
+		pristine_dir[0] = 0;
+		return;
+	}
+	atexit(pristine_cleanup);
+	for (m = 0; machines[m].name && n_pristine < MAX_PRISTINE; m++)
+		for (t = 0; t < 2; t++) {
+			set_machine(machines[m].name, tvs[t], -1);
+			raw_power_on();
+			snprintf(pristine[n_pristine].key, sizeof(pristine[0].key), "%s", config_key());
+			snprintf(pristine[n_pristine].path, sizeof(pristine[0].path), "%s/%s.a8s", pristine_dir, config_key());
+			if (state_save(pristine[n_pristine].path))
+				n_pristine++;
+		}
+	set_machine(cur_m, cur_tv, -1);
 }
 
 static void unmount_all(void)
@@ -2227,15 +2323,23 @@ static int exec_line(int ci, char *line)
 	return 0;
 }
 
-/* Process commands. block: wait until a run starts. */
+static int client_running(void)
+{
+	return run.active && run.client >= 0;
+}
+
+/* Process commands. block: wait until a run starts (paused, or stopped
+   mid-frame). Otherwise (free-running) handle what has arrived and return;
+   a client's run takes over at once. */
 static void serve(int block)
 {
 	int i, idle = 0;
+#define SERVE_DONE() (client_running() || (block && run.active))
 	for (;;) {
 		int did = 0;
-		for (i = 0; i < MAX_CLIENTS && !run.active; i++) {
+		for (i = 0; i < MAX_CLIENTS && !SERVE_DONE(); i++) {
 			char *line;
-			while (!run.active && (line = take_line(i)) != NULL) {
+			while (!SERVE_DONE() && (line = take_line(i)) != NULL) {
 				did = 1;
 				if (exec_line(i, line)) {
 					/* abandon the stopped frame: continue at the loop top */
@@ -2247,7 +2351,7 @@ static void serve(int block)
 				free(line);
 			}
 		}
-		if (run.active)
+		if (SERVE_DONE())
 			return;
 		if (!block) {
 			poll_sockets(0);
@@ -2274,9 +2378,16 @@ static void serve(int block)
 /* stopped at an instruction boundary inside a frame */
 static void stop_here(const char *why, const char *detail)
 {
+	/* a free-running window goes on after a run_until match / a position;
+	   breakpoints, watchpoints, steps and a CPU jam hold it */
+	int halt = mode != MODE_FREE || !(strcmp(why, "log") == 0 || strcmp(why, "at") == 0
+	                                  || strcmp(why, "signal") == 0);
 	finish_run(why, detail);
-	if (strcmp(why, "frames") != 0)
-		mode = MODE_PAUSED;
+	if (!halt) {
+		start_free_run();
+		return;
+	}
+	mode = MODE_PAUSED;
 	in_cpu = 1;
 #if defined(SOUND) && !defined(LIBATARI800)
 	Sound_Pause();
@@ -2508,8 +2619,10 @@ void A8H_Start(void)
 		char nm[16];
 		snprintf(nm, sizeof(nm), "%s", machine_name);
 		if (!set_machine(nm, tv, -1))
-			set_machine("800xl", tv, -1);
+			snprintf(nm, sizeof(nm), "800xl");
 		unmount_all();
+		take_pristine_states();
+		set_machine(nm, tv, -1);
 		power_on();
 	}
 	memset(&run, 0, sizeof(run));
