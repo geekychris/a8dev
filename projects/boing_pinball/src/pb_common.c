@@ -17,14 +17,22 @@ const MissionDef pb_missions[5] = {
 
 void pb_fmt(char *out, int32_t n)
 {
-    char tmp[16];
-    int8_t len = 0, i, o = 0;
+    /* port: the digits by subtracting powers of ten (cc65 divides 32 bits
+       in ~1,500 cycles a digit; the same text) */
+    static const uint32_t p10[10] = { 1000000000UL, 100000000UL, 10000000UL, 1000000UL, 100000UL,
+                                      10000UL, 1000UL, 100UL, 10UL, 1UL };
+    int8_t i, o = 0, started = 0;
     uint32_t u = (uint32_t)(n < 0 ? -n : n);
-    do { tmp[len++] = (char)('0' + u % 10); u /= 10; } while (u);
+    char d;
     if (n < 0) out[o++] = '-';
-    for (i = len - 1; i >= 0; i--) {
-        out[o++] = tmp[i];
-        if (i && i % 3 == 0) out[o++] = ',';
+    for (i = 0; i < 10; i++) {
+        d = '0';
+        while (u >= p10[i]) { u -= p10[i]; d++; }
+        if (d != '0' || started || i == 9) {
+            started = 1;
+            out[o++] = d;
+            if (i == 0 || i == 3 || i == 6) out[o++] = ',';   /* 9, 6 or 3 digits to go */
+        }
     }
     out[o] = 0;
 }

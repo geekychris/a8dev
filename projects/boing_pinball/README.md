@@ -61,9 +61,10 @@ Changed (marked `port:` in the code):
   straight part the contact normal is the wall's own (no square root or
   division; the same up to rounding); the substeps' count takes |v| from
   above without a square root (max + min / 2).
-- **The speed**: the simulation needs about twice the 6502's time: it runs
-  **about 12-15 of the 25 steps a second** (the test measures it: ~14 in
-  play), so the ball moves at a bit over half the original's speed. The
+- **The speed**: the simulation needs more than the 6502's time: it runs
+  **about 16 of the 25 steps a second** (the test measures it: ~16 in play,
+  ~15 in the attract mode), so the ball moves at about two thirds of the
+  original's speed. The
   display is drawn every frame (50 a second). See Not done.
 - Rules: the plunger's pull and the tilt meter's decay per step converted;
   timers in milliseconds instead of floating-point seconds (cc65 has none).
@@ -138,10 +139,31 @@ From 1.2 steps a second (cc65's C as it was) to ~14:
   struct indexing in the hot loops, a moving flipper adds substeps only
   when a ball could reach it.
 
+From ~13 to ~16 (the attract mode over 20,000 frames: 13.0 -> 16.3; the
+physics' results unchanged: the attract mode's log is the same event for
+event as before):
+- the ball against a flipper is asm (`flip_fast`, step for step the C:
+  `make FLIPCHECK=1` runs both and logs any difference), and the flipper's
+  sine (`sin_q14`);
+- the substep loop is asm (`substeps`), and steps only the flippers that
+  are moving when the step starts (one at rest stays so);
+- past a wall's end, `seg_fast` says "no contact" itself when the ball's
+  box misses the end point by its reach and 2 P (the C took the end's
+  circle every time);
+- the 32 / 16 division takes 16 steps when the quotient fits 16 bits;
+  `div625` is asm; the score's digits are made by subtraction (cc65's
+  32-bit division was ~1,500 cycles a digit);
+- the display interrupts: the NMI goes straight to the DLI, and a table
+  row with the same font and colours as the row above gets no DLI (the
+  VBI sets the display list's DLI bits when the scroll row changes);
+- the ball and flippers are drawn only on frames where the physics stepped.
+
 ## Not done
 
-- **Full speed.** The rest of the physics and the rules' per-step C would
-  have to be asm too.
+- **Full speed.** The rest of the physics (the C around the substeps,
+  `flipper_step`, the walls' ends and the posts) and the rules' per-step C
+  would have to be asm too; the display interrupts on every changing row
+  still take about a sixth of the machine.
 - The other two tables, the MOD music, the bumpers' and slings' flashes,
   the plunger's drawing.
 

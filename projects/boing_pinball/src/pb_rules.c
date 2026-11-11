@@ -457,7 +457,7 @@ void pb_game_tick(Game *g, const PbInput *in)
         Ball *b;
         for (i = 0, b = w->balls; i < nb; i++, b++)
             if (b->state == BS_LANE && b->autol >= 0 && --b->autol < 0)
-                fire_plunger(g, b, 820 + (int16_t)(a3_rand(&g->rng) % 100), 1);
+                fire_plunger(g, b, 820 + (int16_t)((uint16_t)a3_rand(&g->rng) % 100), 1);
     }
     /* nudging and the tilt bob */
     if ((in->nudge_x || in->nudge_y) && g->state == GS_PLAY && !g->tilted) do_nudge(g, in->nudge_x, in->nudge_y);
@@ -471,7 +471,7 @@ void pb_game_tick(Game *g, const PbInput *in)
         Ball *b;
         for (i = 0, b = w->balls; i < nb; i++, b++)
             if (b->state == BS_SAUCER && b->hold <= 0)
-                pb_kick_saucer(w, b, V_MM((int16_t)(a3_rand(&g->rng) % 161) - 80));
+                pb_kick_saucer(w, b, V_MM((int16_t)((uint16_t)a3_rand(&g->rng) % 161) - 80));
     }
     nev = w->nev; w->nev = 0;
     for (i = 0; i < nev; i++) {

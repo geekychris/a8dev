@@ -2,6 +2,10 @@ NAME   := boing_pinball
 A8_SDK ?= ../../sdk
 CFG    := boing_pinball.cfg
 OPT    := -Ors -g
+ifeq ($(FLIPCHECK),1)
+EXTRA_CFLAGS += -DFLIPCHECK
+EXTRA_ASFLAGS += -DFLIPCHECK
+endif
 ifeq ($(SEGCHECK),1)
 EXTRA_CFLAGS += -DSEGCHECK
 EXTRA_ASFLAGS += -DSEGCHECK
@@ -24,7 +28,7 @@ $(OBJDIR)/physasm.s.o: EXTRA_ASFLAGS +=
 $(OBJDIR)/pb_phys2.c.o: EXTRA_CFLAGS += $(B2)
 $(OBJDIR)/pb_rules.c.o: EXTRA_CFLAGS += $(B1) -Cl
 $(OBJDIR)/table_0.c.o $(OBJDIR)/sin_tab.c.o: EXTRA_CFLAGS += --rodata-name TABRO --data-name TABDATA --bss-name TABBSS
-$(OBJDIR)/front.c.o $(OBJDIR)/pb_rules2.c.o $(OBJDIR)/segcheck.c.o $(OBJDIR)/gfx_data.c.o: EXTRA_CFLAGS += $(FRONT)
+$(OBJDIR)/front.c.o $(OBJDIR)/pb_rules2.c.o $(OBJDIR)/segcheck.c.o $(OBJDIR)/flipcheck.c.o $(OBJDIR)/gfx_data.c.o: EXTRA_CFLAGS += $(FRONT)
 
 # the table's graphics are made by tools/gen_gfx.py (checked in)
 $(OBJDIR)/gfx.s.o: gfx/fonts.bin gfx/map.bin gfx/flips.bin
