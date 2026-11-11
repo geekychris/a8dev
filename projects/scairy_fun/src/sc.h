@@ -155,6 +155,7 @@ typedef struct {
     int32_t score;
     int16_t cover, mult;
     uint16_t ap_frames;
+    uint8_t mult_t;                      /* steps towards the next multiplier */
     uint32_t dist_ap, dist_all;          /* this route, fine units / 16 (units) */
     uint8_t dist_apf, dist_allf;
     int16_t saves, needless, takeovers;

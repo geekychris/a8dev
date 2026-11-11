@@ -349,12 +349,12 @@ int main(void)
             a8_log_s(paused ? "scairy: paused\n" : "scairy: resumed\n");
         }
         if (paused) continue;
-        /* the simulation: 25 steps a second (PAL: one each 2 frames;
-           NTSC: 5 in 12), at most 3 behind */
+        /* the simulation: 12.5 steps a second (PAL: one each 4 frames;
+           NTSC: 5 in 24), at most 3 behind */
         acc += f * (frame_is_pal() ? 6 : 5);
         steps = 0;
-        while (acc >= 12 && steps < 3) {
-            acc -= 12;
+        while (acc >= 24 && steps < 3) {
+            acc -= 24;
             world_update(in & (IN_LEFT | IN_RIGHT | IN_UP | IN_DOWN | IN_FIRE | IN_START));
             events();
             steps++;
@@ -388,7 +388,7 @@ int main(void)
                 final_score = 0;
             }
         }
-        if (acc >= 12) { sc_probe.late++; acc = 0; }
+        if (acc >= 24) { sc_probe.late++; acc = 0; }
         render_frame();
         sprites_frame();
         hud();

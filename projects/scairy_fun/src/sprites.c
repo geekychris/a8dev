@@ -64,7 +64,7 @@ static uint8_t project_pt(uint16_t z, int16_t du)
     if (zr <= 64 || zr >= 4000) return 0;
     k = ktab8[(uint16_t)zr >> 3];
     mk = k;
-    line = (int16_t)(((int32_t)cam_dir16 * zr) >> 11);
+    line = ((cam_dir16 >> 4) * (zr >> 4)) >> 3;         /* dir16 * zr / 2048, in 16 bits */
     sx = 80 + (mulk(road_cx(z, 0) + du - cam_x - line) >> 4);
     sy = HOR + (mulk(cam_y - road_y(z)) >> 4);
     mk = k;

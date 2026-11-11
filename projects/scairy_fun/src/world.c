@@ -3,6 +3,13 @@
  * the car, the autopilot, traffic, the hazards, damage and the score, and
  * the route -> arrival -> software update -> next route loop.
  *
+ * A step is 2/25 s (12.5 a second, the original's 25 halved: at ~6 frames a
+ * second the Atari has CPU for one or the other): positions move twice the
+ * original's step (speeds keep its units: fine units per 1/25 s, so the
+ * km/h and the autopilot's rules are as they were), accelerations and
+ * steering rates are doubled, timers halved, and collisions use a window
+ * grown by the closing speed so nothing is jumped over.
+ *
  * The original's world.c, simplified to fit (its 32-bit C would be ~38K of
  * 6502 code; this is about a third of that). Kept as the original has them:
  * the car's handling (steering, the bends' pull, aquaplaning, what lies
@@ -86,10 +93,12 @@ uint16_t sc_rand(void)
 
 static uint8_t rnd(uint8_t n) { return (uint8_t)(sc_rand() % n); }
 
-/* z + v (fine) */
+/* z + 2 v (fine): a step is 2/25 s, v is per 1/25 s */
 static void advance(uint16_t *z, uint8_t *zf, int16_t v)
 {
-    int16_t t = (int16_t)*zf + (v & 15);
+    int16_t t;
+    v <<= 1;
+    t = (int16_t)*zf + (v & 15);
     *z += (v >> 4) + (t >> 4);
     *zf = (uint8_t)(t & 15);
 }
@@ -124,7 +133,7 @@ uint8_t world_pop_event(Event *e)
 void world_say(uint8_t msg)
 {
     w.msg = msg;
-    w.msg_timer = 75;
+    w.msg_timer = 38;
     push(EV_SAY, msg, 0);
 }
 
@@ -137,7 +146,7 @@ static void hurt(uint8_t n, uint8_t ev)
     push(ev, n, w.cover);
     if (w.cover == 0 && w.state == GS_PLAY) {
         w.state = GS_GAMEOVER;
-        w.state_timer = 50;
+        w.state_timer = 25;
         w.ai.on = 0;
         push(EV_GAME_OVER, 0, w.route);
         world_say(MSG_CANCELLED);
@@ -371,12 +380,12 @@ static void vehicle_follow(uint8_t i)
             if (des < t) t = des;
         }
     }
-    obj_v[i] = approach(obj_v[i], t, 3, 10);
+    obj_v[i] = approach(obj_v[i], t, 6, 20);
 }
 
 static void move_across(uint8_t i, int16_t target, uint8_t rate)
 {
-    obj_d[i] = approach(obj_d[i], target, rate, rate);
+    obj_d[i] = approach(obj_d[i], target, rate << 1, rate << 1);
 }
 
 static void objects_update(void)
@@ -401,10 +410,10 @@ static void objects_update(void)
                     to = F(road_left() - 26);
                     if (dz < -2 * SEG_LEN) obj_flags[i] &= ~OF_PASSING;
                 } else if (near_d(i, w.car.d, 34) && dz > 0 && gap < 4 * SEG_LEN) {
-                    obj_v[i] = approach(obj_v[i], 0, 10, 10);
-                    if (++obj_timer[i] > 50) obj_flags[i] |= OF_PASSING;
+                    obj_v[i] = approach(obj_v[i], 0, 20, 20);
+                    if (++obj_timer[i] > 25) obj_flags[i] |= OF_PASSING;
                 } else
-                    obj_v[i] = approach(obj_v[i], obj_vt[i], 4, 4);
+                    obj_v[i] = approach(obj_v[i], obj_vt[i], 8, 8);
                 move_across(i, to, 16);
             }
         } else switch (type) {
@@ -412,11 +421,11 @@ static void objects_update(void)
         case OBJ_TRUCK:
             if (obj_flags[i] & OF_TAILGATE) {
                 /* close behind, reacting to the car half a second late */
-                t = w.car.hist[(uint8_t)(w.car.hist_pos - 12) & 31];
+                t = w.car.hist[(uint8_t)(w.car.hist_pos - 6) & 31];
                 gap = t + (gap - 48) * 2;
                 if (gap > t + FROM_KMH(30)) gap = t + FROM_KMH(30);
                 if (gap < 0) gap = 0;
-                obj_v[i] = approach(obj_v[i], gap, 6, 12);
+                obj_v[i] = approach(obj_v[i], gap, 12, 24);
                 if (w.car.d >= 0) obj_d[i] = lane_d(lane_of(w.car.d));
                 if (obj_hz[i] >= 0 && w.haz_state[obj_hz[i]] == 2) {
                     obj_flags[i] &= ~OF_TAILGATE;
@@ -453,7 +462,7 @@ static void objects_update(void)
                     obj_timer[i]++;
                 }
                 if (!near_d(i, w.car.d, 45) || w.car.state != CS_DRIVING) obj_flags[i] |= OF_PASSING;
-                else if (obj_timer[i] > 75) {
+                else if (obj_timer[i] > 38) {
                     obj_flags[i] |= OF_PASSING;
                     hurt(10, EV_TICKET);
                     world_say(MSG_TICKET);
@@ -472,7 +481,7 @@ static void objects_update(void)
 
         case OBJ_TRACTOR:
             if (obj_hz[i] >= 0 && seg_of(obj_z[i]) > w.haz[obj_hz[i]].seg + w.haz[obj_hz[i]].len) {
-                obj_d[i] += 20;             /* turns off into a field */
+                obj_d[i] += 40;             /* turns off into a field */
                 obj_v[i] = FROM_KMH(10);
                 if ((obj_d[i] >> FBITS) > road_right() + 220) obj_type[i] = OBJ_NONE;
             } else
@@ -487,7 +496,7 @@ static void objects_update(void)
                 obj_timer[i] = 1;
                 obj_vd[i] = type == OBJ_PED ? -18 : -30;
             }
-            obj_d[i] += obj_vd[i];
+            obj_d[i] += obj_vd[i] << 1;
             break;
         }
         if (!obj_type[i]) continue;
@@ -514,19 +523,20 @@ static void collide(void)
         dz = rz[i];
         dd = (obj_d[i] - w.car.d) >> FBITS;
         ln = obj_len[type];
-        if (iabs(dz) >= CAR_LEN + ln || iabs(dd) >= CAR_WID + obj_wid[type]) continue;
+        /* (swept: a step is 2/25 s, so the window grows by the closing speed) */
+        if (iabs(dz) >= CAR_LEN + ln + (iabs(w.car.v - obj_v[i]) >> 3) || iabs(dd) >= CAR_WID + obj_wid[type]) continue;
         if (type == OBJ_DEBRIS) {
             obj_type[i] = OBJ_NONE;
             w.car.v = w.car.v * 3 / 4;
             oops(10, EV_DEBRIS);
         } else if (type == OBJ_DEER || type == OBJ_GOAT || type == OBJ_PED || type == OBJ_CYCLIST) {
-            obj_cool[i] = 1000;
+            obj_cool[i] = 500;
             obj_vd[i] = dd > 0 ? 60 : -60;
             obj_v[i] = 0;
             w.car.v /= 2;
             oops(20, EV_HIT_ANIMAL);
         } else {
-            obj_cool[i] = 50;
+            obj_cool[i] = 25;
             if (obj_v[i] < 0) {            /* head on: the other car a wreck at the roadside */
                 w.car.v = obj_v[i] = 0;
                 obj_flags[i] |= OF_KNOCKED;
@@ -547,7 +557,7 @@ static void collide(void)
     /* cones in a closed lane */
     for (k = cs; k <= cs + 1; k++) {
         if (k >= w.nseg || (w.knocked[k >> 3] & (1 << (k & 7))) || !cone_at(k, &cd)) continue;
-        if (iabs((int16_t)(((uint16_t)k << SEG_BITS) - w.car.z)) < CAR_LEN + 4 &&
+        if (iabs((int16_t)(((uint16_t)k << SEG_BITS) - w.car.z)) < CAR_LEN + 4 + (w.car.v >> 3) &&
             iabs((w.car.d >> FBITS) - cd) < CAR_WID + 4) {
             w.knocked[k >> 3] |= (uint8_t)(1 << (k & 7));
             w.car.v = w.car.v * 7 / 8;
@@ -576,6 +586,7 @@ void world_set_ap(uint8_t on)
         w.ai.on = 1;
         w.ai.lane = lane_of(w.car.d);
         w.ap_frames = 0;
+    w.mult_t = 0;
         push(EV_AP_ON, 0, 0);
         world_say(MSG_AP_ON);
     } else if (!on && w.ai.on) {
@@ -584,6 +595,7 @@ void world_set_ap(uint8_t on)
         w.takeovers++;
         w.mult = 1;
         w.ap_frames = 0;
+    w.mult_t = 0;
         push(EV_AP_OFF, w.takeovers, 0);
         if (w.state != GS_PLAY) return;
         h = world_hazard_ahead(24);
@@ -611,7 +623,7 @@ static void ai_lanes(void)
             obj_type[i] > OBJ_TRACTOR) continue;
         if (obj_v[i] < w.ai.target_v - FROM_KMH(10) && w.ai.lane > 0 && lane_clear(w.ai.lane - 1, -4, 5, -1)) {
             w.ai.lane--;
-            w.ai.lane_hold = 100;
+            w.ai.lane_hold = 50;
             return;
         }
     }
@@ -619,7 +631,7 @@ static void ai_lanes(void)
         for (i = 0; i < 16 && cs + i < w.nseg; i++)
             if (seg_closed[cs + i] & (1 << (w.ai.lane + 1))) return;
         w.ai.lane++;
-        w.ai.lane_hold = 100;
+        w.ai.lane_hold = 50;
     }
 }
 
@@ -681,7 +693,7 @@ static void ai_think(void)
         for (k = cs + 1; k <= cs + 6 && k < w.nseg; k++)
             if ((seg_flags[k] & SF_OVERPASS) && !(seg_flags[k - 1] & SF_OVERPASS) && k != w.ai.phantom_seg) {
                 w.ai.phantom_seg = k;
-                w.ai.phantom_timer = 30;
+                w.ai.phantom_timer = 15;
                 push(EV_PHANTOM, k, 0);
                 world_say(MSG_OBSTACLE);
                 break;
@@ -727,7 +739,8 @@ static void ai_think(void)
     if (cs >= w.finish) lim = w.nseg - 6 > cs ? FROM_KMH(30) : 0;
     w.ai.target_v = lim;
 
-    /* comments */
+    /* comments (every 4th step) */
+    if (w.frame & 1) return;
     for (i = 0; i < w.nhaz; i++) {
         h = &w.haz[i];
         if (w.haz_said[i] || !w.ai.on || w.state != GS_PLAY) continue;
@@ -758,6 +771,7 @@ static void place(uint16_t z)
     w.ai.blinded = 0;
     w.mult = 1;
     w.ap_frames = 0;
+    w.mult_t = 0;
 }
 
 static void respawn(void)
@@ -788,25 +802,25 @@ static void off_road(uint8_t side, int16_t depth, int16_t edge)
         w.car.s = 0;
         if (!w.car.cool) {
             w.car.v = w.car.v * 3 / 4;
-            w.car.cool = 15;
+            w.car.cool = 8;
             hurt(rail ? 5 : t == SIDE_MEDIAN ? 8 : 10, EV_SCRAPE);
         }
     } else if (t == SIDE_GRASS) {
-        if (w.car.v > FROM_KMH(40)) w.car.v -= 6;
+        if (w.car.v > FROM_KMH(40)) w.car.v -= 12;
         if (depth > 160) w.car.d = F(edge + (side ? 160 : -160));
     } else if (t == SIDE_TOWN) {
         if (depth > 40) {
             w.car.d = F(edge + (side ? 38 : -38));
             if (!w.car.cool) {
                 w.car.v /= 3;
-                w.car.cool = 25;
+                w.car.cool = 13;
                 oops(25, EV_CRASH);
             }
         }
     } else if (depth > ((t == SIDE_LEVEE || t == SIDE_CANAL) ? 16 : 8)) {
         t = t == SIDE_LEVEE || t == SIDE_CANAL;
         w.car.state = t ? CS_SPLASH : CS_ROLL;
-        w.car.timer = 50;
+        w.car.timer = 25;
         w.car.lat = side ? 24 : -24;
         w.ai.on = 0;
         hurt(40, t ? EV_SPLASH : EV_ROLL);
@@ -823,9 +837,9 @@ static void car_update(uint8_t in)
 
     if (w.car.cool > 0) w.car.cool--;
     if (w.car.state == CS_SPLASH || w.car.state == CS_ROLL) {
-        w.car.v = w.car.v * 15 / 16;
+        w.car.v = w.car.v * 7 / 8;
         advance(&w.car.z, &w.car.zf, w.car.v);
-        w.car.d += w.car.lat;
+        w.car.d += w.car.lat << 1;
         if (--w.car.timer <= 0) respawn();
         return;
     }
@@ -839,35 +853,35 @@ static void car_update(uint8_t in)
         /* the autopilot's steering: the bend, plus the way to its plan */
         u = seg_of(w.car.z + 2 * SEG_LEN) - w.ai.plan_from;
         pull = w.ai.plan[u < 0 ? 0 : u > 15 ? 15 : u];
-        pull = (((w.ai.blinded ? 0 : road_curve(w.car.z)) * w.car.v) * 9) / 40 +
+        pull = (w.ai.blinded ? 0 : road_curve(w.car.z)) * ((w.car.v * 58) >> 8) +   /* k v 9/40 */
                ((pull - w.car.d) >> FBITS) * 4;
         w.car.s = pull > 256 ? 256 : pull < -256 ? -256 : pull;
-        w.car.v = approach(w.car.v, w.ai.target_v, 3, w.ai.phantom_timer > 0 ? 18 : 8);
+        w.car.v = approach(w.car.v, w.ai.target_v, 6, w.ai.phantom_timer > 0 ? 36 : 16);
     } else {
-        if (in & IN_LEFT) w.car.s = w.car.s > -216 ? w.car.s - 40 : -256;
-        else if (in & IN_RIGHT) w.car.s = w.car.s < 216 ? w.car.s + 40 : 256;
-        else w.car.s = approach(w.car.s, 0, 64, 64);
-        if (in & IN_DOWN) w.car.v -= 12;
-        else if (in & IN_UP) w.car.v += 4;
-        else w.car.v -= 1;
+        if (in & IN_LEFT) w.car.s = w.car.s > -176 ? w.car.s - 80 : -256;
+        else if (in & IN_RIGHT) w.car.s = w.car.s < 176 ? w.car.s + 80 : 256;
+        else w.car.s = approach(w.car.s, 0, 128, 128);
+        if (in & IN_DOWN) w.car.v -= 24;
+        else if (in & IN_UP) w.car.v += 8;
+        else w.car.v -= 2;
         if (w.car.v < 0) w.car.v = 0;
         if (w.car.v > FROM_KMH(MAX_KMH)) w.car.v = FROM_KMH(MAX_KMH);
     }
 
     /* the bend's pull, k v^2 / 8000, in 16 bits: (v/4)^2 / 50 * k / 10 */
     u = w.car.v >> 2;
-    pull = (((u * u) / 50) * road_curve(w.car.z)) / 10;
+    pull = ((u * u) >> 9) * road_curve(w.car.z);
     aq = FROM_KMH(aqua_kmh());
     if ((seg_flags[cs] & SF_FLOOD) && w.car.v > aq) {
         if (w.car.state != CS_AQUAPLANE) push(EV_AQUAPLANE, KMH(w.car.v), 0);
         w.car.state = CS_AQUAPLANE;
         w.car.lat = -((w.car.v - aq) * 3) / 2;
-        w.car.v -= 1;
+        w.car.v -= 2;
     } else {
         w.car.state = CS_DRIVING;
-        w.car.lat = (w.car.s * (w.car.v >> 3)) / 225 - pull;      /* s v / 1800 */
+        w.car.lat = ((w.car.s * ((w.car.v * 9) >> 6)) >> 8) - pull;   /* s v / 1800 */
     }
-    w.car.d += w.car.lat;
+    w.car.d += w.car.lat << 1;
     advance(&w.car.z, &w.car.zf, w.car.v);
 
     u = w.car.d >> FBITS;
@@ -906,7 +920,7 @@ void world_start_route(uint8_t route)
     w.glare = 0;
     w.siren = 0;
     w.state = GS_INTRO;
-    w.state_timer = 100;
+    w.state_timer = 50;
     push(EV_ROUTE_START, route, 0);
 }
 
@@ -939,20 +953,19 @@ int16_t world_ap_pct(void)
 
 static void score_update(void)
 {
-    static int16_t m, s;
+    static int16_t s;
     if (w.state != GS_PLAY || w.car.state >= CS_SPLASH) return;
-    w.dist_all += w.car.v;
+    w.dist_all += w.car.v << 1;
     if (!w.ai.on) return;
-    w.dist_ap += w.car.v;
-    s = w.ap_rem + w.car.v * w.mult;
+    w.dist_ap += w.car.v << 1;
+    s = w.ap_rem + (w.car.v << 1) * w.mult;
     w.score += s >> 8;
     w.ap_rem = (uint8_t)s;
-    w.ap_frames++;
-    m = 1 + w.ap_frames / 200;              /* x1 more every 8 s, to x8 */
-    if (m > 8) m = 8;
-    if (m > w.mult) {
-        w.mult = m;
-        push(EV_MULT_UP, m, 0);
+    w.ap_frames += 2;                     /* (in 1/25 s) */
+    if (++w.mult_t >= 100 && w.mult < 8) {  /* x1 more every 8 s, to x8 */
+        w.mult_t = 0;
+        w.mult++;
+        push(EV_MULT_UP, w.mult, 0);
     }
 }
 
@@ -981,20 +994,20 @@ void world_update(uint8_t in)
         }
         break;
     case GS_ARRIVED:
-        if (w.state_timer == 0 || (w.state_timer < 210 && (edge & (IN_FIRE | IN_START)))) {
+        if (w.state_timer == 0 || (w.state_timer < 105 && (edge & (IN_FIRE | IN_START)))) {
             if (w.route < NUM_ROUTES - 1) {
                 w.state = GS_UPDATE;
-                w.state_timer = 200;
+                w.state_timer = 100;
                 world_say(MSG_UPDATED);
             } else {
                 w.state = GS_WIN;
-                w.state_timer = 50;
+                w.state_timer = 25;
                 push(EV_WIN, 0, 0);
             }
         }
         break;
     case GS_UPDATE:
-        if (w.state_timer == 0 || (w.state_timer < 160 && (edge & (IN_FIRE | IN_START))))
+        if (w.state_timer == 0 || (w.state_timer < 80 && (edge & (IN_FIRE | IN_START))))
             world_start_route(w.route + 1);
         w.last_in = in;
         return;
@@ -1012,12 +1025,13 @@ void world_update(uint8_t in)
     g = 0;
     for (k = 0; k < 4 && cs + k < w.nseg; k++)
         if (seg_flags[cs + k] & SF_GLARE) { g = 16; break; }
-    if (w.glare < g) w.glare++;
-    else if (w.glare > g) w.glare--;
+    if (w.glare < g) w.glare += 2;
+    else if (w.glare > g) w.glare -= 2;
 
     if (w.state == GS_PLAY || w.state == GS_TITLE) {
+        /* (staggered: the hazards every 2nd step, traffic every 4th) */
         hazards_update();
-        traffic_spawn();
+        if (!(w.frame & 1)) traffic_spawn();
     }
     ai_think();
     car_update(w.state == GS_PLAY ? in : 0);
@@ -1032,7 +1046,7 @@ void world_update(uint8_t in)
         w.score += w.route_bonus;
         w.cover = w.cover + 30 > 100 ? 100 : w.cover + 30;
         w.state = GS_ARRIVED;
-        w.state_timer = 250;
+        w.state_timer = 125;
         w.ai.on = 1;
         w.ai.blinded = 0;
         w.pending_save = -1;

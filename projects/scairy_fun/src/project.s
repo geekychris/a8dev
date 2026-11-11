@@ -1,8 +1,8 @@
 ; ScAIry Fun - projecting the road's segment boundaries (render.c's loop,
 ; in asm: in C it took ~90,000 cycles a frame).
 ;
-; For the boundaries ahead (every segment to 8 out, every second to 16,
-; every fourth to 32): the distance zr from the camera, the scale (ktab8:
+; For the boundaries ahead (every segment to 6 out, every second to 12,
+; every fourth to 28): the distance zr from the camera, the scale (ktab8:
 ; k / 2 = 45 * 256 / zr), and in 12.4 pixels the centre line (relative to
 ; the camera's line of sight, which drifts with its heading), the lane
 ; width, the ghost lines' and the path's offsets; the row; the segment's
@@ -389,9 +389,9 @@ nopath: ldx nb
         cmp #NB
         beq done
 nexti:  lda i
-        cmp #8
+        cmp #6
         bcc s1
-        cmp #16
+        cmp #12
         bcc s2
         clc
         adc #4
