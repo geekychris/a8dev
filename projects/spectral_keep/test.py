@@ -8,7 +8,10 @@ each logic step: through the gate room's north door into the Great Hall,
 round its west side to the relic, then it stands still while the ghost
 takes every life: game over, back to the title. Checks the rooms, the
 relic, the deaths, the explorer and the ghost as players, the logic's rate.
-Then a 64K 800XL: the "needs a 130XE" screen.
+Then the other keeps: the Crypt (its stairs, north into the catacomb) and
+the Tower (its foyer, north into the stairwell), each chosen on the title
+and walked with the joystick, their rooms drawn. Then a 64K 800XL: the
+"needs a 130XE" screen.
 """
 import re
 import sys
@@ -20,7 +23,8 @@ sys.path.insert(0, str(ROOT / "tools" / "a8dev" / "src"))
 sys.path.insert(0, str(HERE / "tools"))
 
 from a8dev.emu import Emulator  # noqa: E402
-from bot import Bot, decode, PROBE_SIZE, B_UP, B_DOWN, B_LEFT, B_RIGHT, B_A  # noqa: E402
+from bot import Bot, decode, keys_towards, PROBE_SIZE, B_UP, B_DOWN, B_LEFT, B_RIGHT, B_A  # noqa: E402
+import math  # noqa: E402
 
 PROG = HERE / "build" / "spectral_keep.xex"
 failures = []
@@ -125,6 +129,52 @@ with Emulator() as emu:
         check("perf lines in the hall", False)
     if failures:
         print("\n".join(log.splitlines()[-30:]))
+
+def walk_keep(keep, name, start, route, target):
+    """choose a keep on the title, walk a route from its first room into the next"""
+    with Emulator() as emu:
+        emu.load(PROG)
+        emu.run_until("sk: ready", 1500)
+        emu.run(30)
+        for _ in range(keep):
+            emu.press("DOWN", hold_frames=6, release_frames=10)
+        emu.run_until(f"sk: drew room={start}", 600)
+        emu.run(20)
+        emu.press("FIRE", hold_frames=6, release_frames=4)
+        ok = emu.run_until(f"sk: level {name}", 300)
+        check(f"{name}: chosen on the title and started", ok)
+        tick, keys, wp, held_now = None, 0, 0, set()
+        for f in range(4000):
+            p = decode(emu.read_mem("keep_probe", PROBE_SIZE, space="ram"))
+            if p["tick"] != tick and p["state"] == 1 and wp < len(route):
+                tick = p["tick"]
+                tx, tz = route[wp]
+                dx, dz = tx - p["px"], tz - p["pz"]
+                if math.hypot(dx, dz) < 0.15 and wp < len(route) - 1:
+                    wp += 1
+                    tx, tz = route[wp]
+                    dx, dz = tx - p["px"], tz - p["pz"]
+                keys = keys_towards(dx, dz, keys)
+                want = {k for b, k in KEYS if keys & b}
+                if want != held_now:
+                    emu.release()
+                    if want:
+                        emu.hold("+".join(sorted(want)))
+                    held_now = want
+            emu.run(1)
+            if f"sk: room {target} visited" in emu.log_text(0):
+                break
+        emu.release()
+        log = emu.log_text(0)
+        check(f"{name}: walked from the {start} into the {target}", f"sk: room {target} visited" in log)
+        emu.run_until(f"sk: drew room={target}", 300)
+        emu.run(40)
+        img = emu.screenshot(HERE / "build" / f"test_{target}.png")
+        check(f"{name}: the {target} drawn", len(img.getcolors(1 << 16) or []) >= 6)
+
+
+walk_keep(1, "THE CRYPT", "stairs", [(4.0, 3.0), (4.0, 9.0)], "catacomb")
+walk_keep(2, "THE TOWER", "foyer", [(3.5, 4.0), (4.0, 9.0)], "stairwell")
 
 with Emulator(machine="800xl") as emu:
     emu.load(PROG)
