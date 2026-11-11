@@ -27,6 +27,14 @@ void __fastcall__ a8_log_u(unsigned int v)
     while (n) A8_LOG_PORT = d[--n];
 }
 
+unsigned char a8_in_harness(void)
+{
+    unsigned char i;
+    for (i = 0; i < 2; ++i)
+        if (A8_LOG_PORT != 0xA8 || A8_SIGNAL_PORT != 0xD8) return 0;
+    return 1;
+}
+
 void a8_done(void)
 {
     a8_log_s("A8:DONE\n");

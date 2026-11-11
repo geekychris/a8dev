@@ -55,8 +55,11 @@ extern void __fastcall__ a8_log_u(unsigned int v);
 /* Test markers: "A8:DONE\n" + signal 0, "A8:FAIL <why>\n" + signal 1. */
 extern void a8_done(void);
 extern void __fastcall__ a8_fail(const char *why);
-/* 1 when running in the a8dev harness (reading $D1F0 gives 0xA8 there). */
-#define a8_in_harness() (A8_LOG_PORT == 0xA8)
+/* 1 when running in the a8dev harness: there $D1F0 reads $A8 and $D1F1
+   reads $D8. Both are checked, twice, because an unmapped PBI read on real
+   hardware returns the floating bus and could match once by chance. Use it
+   for test conveniences only, never for game logic. */
+extern unsigned char a8_in_harness(void);
 #endif
 
 #endif
