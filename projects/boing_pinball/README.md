@@ -62,8 +62,8 @@ Changed (marked `port:` in the code):
   division; the same up to rounding); the substeps' count takes |v| from
   above without a square root (max + min / 2).
 - **The speed**: the simulation needs more than the 6502's time: it runs
-  **about 16 of the 25 steps a second** (the test measures it: ~16 in play,
-  ~15 in the attract mode), so the ball moves at about two thirds of the
+  **about 18 of the 25 steps a second** (the attract mode over 20,000
+  frames: 18.4), so the ball moves at about three quarters of the
   original's speed. The
   display is drawn every frame (50 a second). See Not done.
 - Rules: the plunger's pull and the tilt meter's decay per step converted;
@@ -158,12 +158,23 @@ event as before):
   VBI sets the display list's DLI bits when the scroll row changes);
 - the ball and flippers are drawn only on frames where the physics stepped.
 
+From ~16 to ~18 (16.3 -> 18.4, the log still the same event for event):
+- the step's setup is asm too (`b0_world_step`: the rolling resistance,
+  the speeds, the moving flippers and their reach, the substeps' count and
+  constants, the balls on a ramp, in the saucer and the lane; the spinners
+  stay C, called when one turns);
+- `move_ball` calls `seg_fast` itself: a wall the ball misses costs no C
+  (`mb_seg_end` for an end, `mb_seg_hit` for a contact);
+- the front end's `(a * b) >> 12` is asm (`fmath.s`), each ball's table
+  line is worked out once a frame; the lamps without struct-index
+  multiplies or modulos; the attract mode's high-score line made once.
+
 ## Not done
 
-- **Full speed.** The rest of the physics (the C around the substeps,
-  `flipper_step`, the walls' ends and the posts) and the rules' per-step C
-  would have to be asm too; the display interrupts on every changing row
-  still take about a sixth of the machine.
+- **Full speed.** What's left is spread thin: the display interrupts on
+  every changing row (about a sixth of the machine), the multiplies (a
+  tenth, already quarter squares), and C here and there (the rules' tick,
+  a flipper moving, a wall's end, the posts), each worth under 2% in asm.
 - The other two tables, the MOD music, the bumpers' and slings' flashes,
   the plunger's drawing.
 
