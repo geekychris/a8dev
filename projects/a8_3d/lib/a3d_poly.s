@@ -3,16 +3,21 @@
 
         .importzp a3d_bsel, a3d_p, a3d_q, a3d_t, a3d_m
         .import   _a3d_px, _a3d_py, mul_t_p, a3d_rec_lo, a3d_rec_hi
-        .import   tx, pl, ph, r0, r1, r2, mulset_s
-        .import   _a3d_sx, _a3d_sy, _a3d_vclip, _a3d_h, _a3d_poly_clip
+        .import   tx, pl, ph, r0, r1, r2, mulset_s, mulset_u
+        .include "a3d_mul.inc"
+        .import   _a3d_h
         .import   _a3d_ylo, _a3d_yhi, _a3d_pat_e, _a3d_pat_o
         .import   lbyte, keepl, rbyte, keepr, dirty_add, ry0, ry1, rb0, rb1
-        .export   _a3d_fill, _a3d_poly, _a3d_face_, _a3d_gather_, _a3d_front_, _a3d_fn
+        .export   _a3d_fill, _a3d_poly, _a3d_fn
         .export   _a3d_el, _a3d_er
 
         .include "a3d_span.inc"
 
+.ifdef A3D_LOWTAB
+.segment "LOWRAM"
+.else
 .segment "BSS"
+.endif
 _a3d_el:    .res 97          ; left edge per line
 _a3d_er:    .res 97          ; right edge per line
 _a3d_fn:    .res 1
@@ -21,13 +26,17 @@ ei:     .res 1
 ia:     .res 1               ; edge top / bottom vertex (x2)
 ib:     .res 1
 dyc:    .res 1
+wye:    .res 1
+wys:    .res 1
+wdy:    .res 2
+wsk:    .res 2
+wp:     .res 3
+wq:     .res 1
 sgn2:   .res 1
 bx0:    .res 2               ; polygon bounding box (int16)
 bx1:    .res 2
 by0:    .res 2
 by1:    .res 2
-fi:     .res 1
-fi2:    .res 1
 
 .segment "CODE"
 ; ------------------------------------------------------------------ polygons
@@ -42,40 +51,34 @@ fi2:    .res 1
 :
 .endmacro
 
-; void a3d_poly(uint8 n): reject, clip in C when crossing top/bottom, fill
+; void a3d_poly(uint8 n): the fill rejects and clips by itself now
 _a3d_poly:
         sta     _a3d_fn
+        jmp     _a3d_fill
+
+; void a3d_fill(uint8 n): a3d_px/py (int16): x is clamped per line, y is
+; clipped to 0..a3d_h by the edge walker (an edge starting above line 0 is
+; advanced by slope x the lines skipped)
+_a3d_fill:
         asl     a
         sta     n2
         cmp     #6
         bcs     :+
         rts
-:       lda     _a3d_px
-        sta     bx0
-        sta     bx1
-        lda     _a3d_px+1
-        sta     bx0+1
-        sta     bx1+1
-        lda     _a3d_py
+:       lda     _a3d_py
         sta     by0
         sta     by1
         lda     _a3d_py+1
         sta     by0+1
         sta     by1+1
-        ldx     #2
-@bb:    SLT     {_a3d_px,x}, {_a3d_px+1,x}, bx0, bx0+1
-        bpl     :+
-        lda     _a3d_px,x
+        lda     _a3d_px
         sta     bx0
-        lda     _a3d_px+1,x
-        sta     bx0+1
-:       SLT     bx1, bx1+1, {_a3d_px,x}, {_a3d_px+1,x}
-        bpl     :+
-        lda     _a3d_px,x
         sta     bx1
-        lda     _a3d_px+1,x
+        lda     _a3d_px+1
+        sta     bx0+1
         sta     bx1+1
-:       SLT     {_a3d_py,x}, {_a3d_py+1,x}, by0, by0+1
+        ldx     #2
+@mm:    SLT     {_a3d_py,x}, {_a3d_py+1,x}, by0, by0+1
         bpl     :+
         lda     _a3d_py,x
         sta     by0
@@ -87,210 +90,6 @@ _a3d_poly:
         sta     by1
         lda     _a3d_py+1,x
         sta     by1+1
-:       inx
-        inx
-        cpx     n2
-        beq     :+
-        jmp     @bb
-:       ; reject: y1 <= 0, x1 <= 0, y0 >= h, x0 >= 160
-        lda     by1+1
-        bmi     @out
-        bne     :+
-        lda     by1
-        beq     @out
-:       lda     bx1+1
-        bmi     @out
-        bne     :+
-        lda     bx1
-        beq     @out
-:       lda     by0+1
-        bmi     @clip               ; y0 < 0: clip
-        bne     @out
-        lda     by0
-        cmp     _a3d_h
-        bcs     @out
-        lda     bx0+1
-        bmi     :+
-        bne     @out
-        lda     bx0
-        cmp     #160
-        bcs     @out
-:       lda     by1+1               ; y1 > h: clip
-        bne     @clip
-        lda     _a3d_h
-        cmp     by1
-        bcc     @clip
-        lda     _a3d_fn
-        jmp     _a3d_fill
-@clip:  lda     _a3d_fn
-        jmp     _a3d_poly_clip
-@out:   rts
-
-; uint8 a3d_gather_(const uint8 *idx): a3d_fn vertices into a3d_px/py.
-; 0 = back-facing, 1 = front, 2 = a vertex is behind the near plane
-_a3d_gather_:
-        sta     a3d_q
-        stx     a3d_q+1
-        ldy     #0
-        sty     fi2
-@g:     lda     (a3d_q),y
-        tax
-        lda     _a3d_vclip,x
-        bne     @nearc
-        sty     fi
-        txa
-        asl     a
-        tax
-        ldy     fi2
-        lda     _a3d_sx,x
-        sta     _a3d_px,y
-        lda     _a3d_sx+1,x
-        sta     _a3d_px+1,y
-        lda     _a3d_sy,x
-        sta     _a3d_py,y
-        lda     _a3d_sy+1,x
-        sta     _a3d_py+1,y
-        iny
-        iny
-        sty     fi2
-        ldy     fi
-        iny
-        cpy     _a3d_fn
-        bne     @g
-        jsr     front
-        lda     #0
-        tax
-        rol     a
-        rts
-@nearc: lda     #2
-        ldx     #0
-        rts
-
-; uint8 a3d_front_(void): 1 if a3d_px/py 0, 1, 2 turn clockwise
-_a3d_front_:
-        jsr     front
-        lda     #0
-        tax
-        rol     a
-        rts
-
-; uint8 a3d_face_(const uint8 *idx): gather, cull, draw; 0/1 drawn, 2 = near
-_a3d_face_:
-        jsr     _a3d_gather_
-        cmp     #1
-        bne     :+
-        lda     _a3d_fn
-        jsr     _a3d_poly
-        lda     #1
-:       ldx     #0
-        rts
-
-; carry set if px/py 0, 1, 2 turn clockwise on the screen (cross > 0)
-front:
-        sec
-        lda     _a3d_px+2
-        sbc     _a3d_px
-        sta     dax
-        lda     _a3d_px+3
-        sbc     _a3d_px+1
-        sta     dax+1
-        sec
-        lda     _a3d_py+2
-        sbc     _a3d_py
-        sta     day
-        lda     _a3d_py+3
-        sbc     _a3d_py+1
-        sta     day+1
-        sec
-        lda     _a3d_px+4
-        sbc     _a3d_px
-        sta     dbx
-        lda     _a3d_px+5
-        sbc     _a3d_px+1
-        sta     dbx+1
-        sec
-        lda     _a3d_py+4
-        sbc     _a3d_py
-        sta     dby
-        lda     _a3d_py+5
-        sbc     _a3d_py+1
-        sta     dby+1
-@fit:   ldx     #6                  ; every delta in -128..127?
-@f1:    lda     dax,x
-        asl     a                   ; carry = sign of the low byte
-        lda     dax+1,x
-        adc     #0                  ; high + sign: 0 if it fits
-        bne     @shrink
-        dex
-        dex
-        bpl     @f1
-        ; cross = ax*by - ay*bx
-        lda     dax
-        jsr     mulset_s
-        lda     dby
-        eor     #$80
-        tay
-        sec
-        lda     (a3d_m),y
-        sbc     (a3d_m+2),y
-        sta     dp1
-        lda     (a3d_m+4),y
-        sbc     (a3d_m+6),y
-        sta     dp1+1
-        lda     day
-        jsr     mulset_s
-        lda     dbx
-        eor     #$80
-        tay
-        sec
-        lda     (a3d_m),y
-        sbc     (a3d_m+2),y
-        sta     dax                 ; (reuse) P2
-        lda     (a3d_m+4),y
-        sbc     (a3d_m+6),y
-        sta     dax+1
-        ; front if P1 > P2, i.e. P2 < P1
-        SLT     dax, dax+1, dp1, dp1+1
-        bmi     @yes
-        clc
-        rts
-@yes:   sec
-        rts
-@shrink:
-        ldx     #6
-@s1:    lda     dax+1,x
-        cmp     #$80
-        ror     dax+1,x
-        ror     dax,x
-        dex
-        dex
-        bpl     @s1
-        jmp     @fit
-
-; void a3d_fill(uint8 n)
-_a3d_fill:
-        asl     a
-        sta     n2
-        cmp     #6
-        bcs     :+
-        rts
-:       lda     _a3d_py
-        sta     ymin
-        sta     ymax
-        lda     _a3d_px
-        sta     bx0
-        sta     bx1
-        lda     _a3d_px+1
-        sta     bx0+1
-        sta     bx1+1
-        ldx     #2
-@mm:    lda     _a3d_py,x
-        cmp     ymin
-        bcs     :+
-        sta     ymin
-:       cmp     ymax
-        bcc     :+
-        sta     ymax
 :       SLT     {_a3d_px,x}, {_a3d_px+1,x}, bx0, bx0+1
         bpl     :+
         lda     _a3d_px,x
@@ -306,12 +105,44 @@ _a3d_fill:
 :       inx
         inx
         cpx     n2
-        bne     @mm
-        lda     ymin
-        cmp     ymax
+        beq     :+
+        jmp     @mm
+:       ; ymin = max(y0, 0), ymax = min(y1, h)
+        lda     #0
+        ldx     by0+1
+        bmi     :+
+        lda     by0
+        cpx     #0
+        beq     :+
+        rts                         ; y0 >= 256: below
+:       sta     ymin
+        lda     _a3d_h
+        ldx     by1+1
+        bmi     @out                ; y1 < 0: above
         bne     :+
-        rts
+        cmp     by1
+        bcc     :+
+        lda     by1
+:       sta     ymax
+        cmp     ymin
+        beq     @out
+        bcs     :+
+@out:   rts
+:       ; wholly left (x1 <= 0) or right (x0 >= 160): nothing
+        lda     bx1+1
+        bmi     @out2
+        bne     :+
+        lda     bx1
+        beq     @out2
+:       lda     bx0+1
+        bmi     :+
+        bne     @out2
+        lda     bx0
+        cmp     #160
+        bcc     :+
+@out2:  rts
 :       ; ---- dirty rectangle: bytes of clamp(x0), clamp(x1 - 1)
+        lda     ymin
         sta     ry0
         lda     ymax
         sta     ry1
@@ -349,10 +180,19 @@ _a3d_fill:
         bcc     :+
         lda     #0
 :       tay                         ; X = i, Y = j (both x2)
-        lda     _a3d_py,y
+        lda     _a3d_py,y           ; compare y[j] with y[i] (16 bits)
         cmp     _a3d_py,x
-        beq     @next
-        bcc     @up
+        bne     :+
+        lda     _a3d_py+1,y
+        cmp     _a3d_py+1,x
+        beq     @next               ; flat: no edge
+:       lda     _a3d_py,y
+        cmp     _a3d_py,x
+        lda     _a3d_py+1,y
+        sbc     _a3d_py+1,x
+        bvc     :+
+        eor     #$80
+:       bmi     @up
         stx     ia                  ; down: right side, i at the top
         sty     ib
         lda     #<_a3d_er
@@ -406,7 +246,8 @@ fl_skip:  ldy     yy
         jmp     fl_line
 :       rts
 
-; walk the edge ia (top) -> ib into the table at A/X
+; walk the edge ia (top) -> ib (16-bit y) into the table at A/X, the lines
+; of it inside 0..a3d_h
 walk:
         sta     @fs+1
         stx     @fs+2
@@ -416,17 +257,38 @@ walk:
         stx     @ss+2
         ldx     ia
         ldy     ib
+        ; the visible lines: ys = max(ya, 0), ye = min(yb, h)
+        lda     _a3d_py+1,y         ; yb <= 0: none
+        bmi     @none0
+        bne     :+
         lda     _a3d_py,y
+        beq     @none0
+:       lda     _a3d_py+1,x         ; ya >= h: none
+        bmi     :+
+        bne     @none0
+        lda     _a3d_py,x
+        cmp     _a3d_h
+        bcc     :+
+@none0: rts
+:
+:       lda     _a3d_h              ; ye
+        ldx     _a3d_py+1,y
+        bne     :+
+        cmp     _a3d_py,y
+        bcc     :+
+        lda     _a3d_py,y
+:       sta     wye
+        ; dy = yb - ya (16 bits)
+        ldx     ia
         sec
+        lda     _a3d_py,y
         sbc     _a3d_py,x
-        sta     dyc
-        tay
-        lda     a3d_rec_lo,y
-        sta     pl
-        lda     a3d_rec_hi,y
-        sta     ph
-        ldy     ib
-        sec                         ; dx = xb - xa
+        sta     wdy
+        lda     _a3d_py+1,y
+        sbc     _a3d_py+1,x
+        sta     wdy+1
+        ; dx = xb - xa, its sign and size
+        sec
         lda     _a3d_px,y
         sbc     _a3d_px,x
         sta     tx
@@ -442,8 +304,21 @@ walk:
         lda     #0
         sbc     tx+1
         sta     tx+1
-:       jsr     mul_t_p             ; r = |dx| * 65536/dy >> 8
-        lda     r0
+:       lda     wdy+1               ; the slope: |dx| * 65536/dy >> 8, or |dx|*256 / dy
+        bne     @long
+        lda     wdy
+        cmp     #97
+        bcs     @long
+        tay
+        lda     a3d_rec_lo,y
+        sta     pl
+        lda     a3d_rec_hi,y
+        sta     ph
+        jsr     mul_t_p
+        jmp     @slope
+@none:  rts
+@long:  jsr     div24               ; r = (|dx| << 8) / dy
+@slope: lda     r0
         sta     sl0
         lda     r1
         sta     sl1
@@ -468,9 +343,32 @@ walk:
         sta     xl
         lda     _a3d_px+1,x
         sta     xh
-        ; fast path: both ends inside 0..160
+        ; above line 0: x += slope * -ya, start at 0
+        lda     _a3d_py+1,x
+        bpl     @ys
+        sec
+        lda     #0
+        sbc     _a3d_py,x
+        sta     wsk
+        lda     #0
+        sbc     _a3d_py+1,x
+        sta     wsk+1
+        jsr     skip
+        lda     #0
+        sta     wys
+        jmp     @range
+@ys:    lda     _a3d_py,x
+        sta     wys
+@range: lda     wye                 ; lines to walk
+        sec
+        sbc     wys
+        beq     @none
+        bcc     @none
+        sta     dyc
+        ; fast path: both ends inside 0..160 (x is monotonic between them)
+        lda     _a3d_px+1,x
         bne     @slow
-        lda     xl
+        lda     _a3d_px,x
         cmp     #161
         bcs     @slow
         ldy     ib
@@ -479,10 +377,8 @@ walk:
         lda     _a3d_px,y
         cmp     #161
         bcs     @slow
-        lda     _a3d_py,x           ; y range: Y = ya .. yb-1
-        tay
-        clc
-        adc     dyc
+        ldy     wys                 ; Y = ys .. ye-1
+        lda     wye
         sta     @fe+1
         lda     sl1                 ; vertical edge: the same x on every line
         ora     sl0
@@ -508,8 +404,7 @@ walk:
 @fe:    cpy     #$FF                ; carry clear while y < end
         bne     @fast
         rts
-@slow:  ldx     ia
-        ldy     _a3d_py,x
+@slow:  ldy     wys
         ldx     dyc
 @sl:    lda     xh
         bmi     @neg
@@ -536,3 +431,87 @@ walk:
         bne     @sl
         rts
 
+; x (xh:xl:xf) += slope (24) * wsk (16), the low 24 bits (two's complement:
+; the unsigned product's low 24 bits are right for a negative slope too)
+skip:   lda     sl0
+        jsr     mulset_u
+        ldy     wsk
+        MUL                         ; s0*k0 -> bytes 0, 1
+        stx     wp
+        sta     wp+1
+        lda     #0
+        sta     wp+2
+        ldy     wsk+1
+        MUL                         ; s0*k1 -> bytes 1, 2
+        jsr     add12
+        lda     sl1
+        jsr     mulset_u
+        ldy     wsk
+        MUL                         ; s1*k0 -> bytes 1, 2
+        jsr     add12
+        ldy     wsk+1
+        MUL                         ; s1*k1 -> byte 2
+        txa
+        clc
+        adc     wp+2
+        sta     wp+2
+        lda     sl2
+        jsr     mulset_u
+        ldy     wsk
+        MUL                         ; s2*k0 -> byte 2
+        txa
+        clc
+        adc     wp+2
+        sta     wp+2
+        clc
+        lda     xf
+        adc     wp
+        sta     xf
+        lda     xl
+        adc     wp+1
+        sta     xl
+        lda     xh
+        adc     wp+2
+        sta     xh
+        rts
+
+; wp+1 += X (low), wp+2 += A (high) + carry
+add12:  sta     wq
+        txa
+        clc
+        adc     wp+1
+        sta     wp+1
+        lda     wq
+        adc     wp+2
+        sta     wp+2
+        rts
+
+; r2:r1:r0 = (tx << 8) / wdy (24 / 16 bits, restoring)
+div24:  lda     #0
+        sta     r0                  ; the dividend tx:0 shifted into r (the quotient)
+        lda     tx
+        sta     r1
+        lda     tx+1
+        sta     r2
+        lda     #0
+        sta     wp                  ; the remainder
+        sta     wp+1
+        ldx     #24
+@d:     asl     r0
+        rol     r1
+        rol     r2
+        rol     wp
+        rol     wp+1
+        lda     wp
+        sec
+        sbc     wdy
+        tay
+        lda     wp+1
+        sbc     wdy+1
+        bcc     :+
+        sta     wp+1
+        sty     wp
+        inc     r0
+:       dex
+        bne     @d
+        rts

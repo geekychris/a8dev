@@ -2,6 +2,7 @@
 ; buffer (see a3d_poly.s for polygons).
 
         .importzp a3d_bsel, a3d_p, a3d_q, a3d_t
+        .constructor a3d_span_init, 20
         .import   _a3d_ylo, _a3d_yhi
         .export   _a3d_span_, _a3d_clear_rows_, _a3d_clear_dirty_
         .export   _a3d_pat_e, _a3d_pat_o, _a3d_sx0, _a3d_sx1
@@ -10,7 +11,11 @@
 
         .include "a3d_span.inc"
 
+.ifdef A3D_LOWTAB
+.segment "LOWRAM"
+.else
 .segment "BSS"
+.endif
 _a3d_pat_e: .res 1           ; pattern on even lines
 _a3d_pat_o: .res 1           ; ... odd lines (must follow pat_e)
 _a3d_sx0:   .res 1
@@ -33,21 +38,43 @@ clen:   .res 2
 cpe:    .res 2
 ; line
 
+.ifdef A3D_LOWTAB
+.segment "LOWRAM"
+.else
+.segment "BSS"
+.endif
+lbyte:  .res    160                     ; x / 4
+keepl:  .res    160                     ; bits to keep left of x0
+rbyte:  .res    161                     ; [x1]: byte of x1-1
+keepr:  .res    161                     ; [x1]: bits to keep right of x1-1
+
 .segment "RODATA"
-lbyte:  .repeat 160, I
-        .byte   I / 4
-        .endrepeat
-keepl:  .repeat 160, I                  ; bits to keep left of x0
-        .byte   <($FF00 >> ((I & 3) * 2))
-        .endrepeat
-rbyte:  .byte   0
-        .repeat 160, I                  ; [x1]: byte of x1-1
-        .byte   I / 4
-        .endrepeat
-keepr:  .byte   0
-        .repeat 160, I                  ; [x1]: bits to keep right of x1-1
-        .byte   $3F >> ((I & 3) * 2)
-        .endrepeat
+keep4l: .byte   $00, $C0, $F0, $FC
+keep4r: .byte   $3F, $0F, $03, $00
+
+; made at start-up (a constructor)
+.segment "ONCE"
+a3d_span_init:
+        ldx     #0
+@l:     txa
+        lsr     a
+        lsr     a
+        sta     lbyte,x
+        sta     rbyte+1,x
+        txa
+        and     #3
+        tay
+        lda     keep4l,y
+        sta     keepl,x
+        lda     keep4r,y
+        sta     keepr+1,x
+        inx
+        cpx     #160
+        bne     @l
+        lda     #0
+        sta     rbyte
+        sta     keepr
+        rts
 
 .segment "CODE"
 

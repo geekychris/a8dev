@@ -47,6 +47,9 @@
    below them (A3D_TEXT, shared by both buffers) */
 extern void a3d_init(uint8_t lines, uint8_t text_rows);
 extern uint8_t a3d_h;            /* lines of 3D */
+/* 1 before a3d_init: every line shown twice (4 scan lines, <= 48 lines):
+   half the lines to fill. The display lists move to $A800 / $B800. */
+extern uint8_t a3d_double;
 extern uint8_t a3d_back;         /* 0/1: the buffer being drawn */
 /* show the back buffer from the next frame, wait for that vertical blank
    (frame_wait(): sound ticks), return the frames since the previous flip */

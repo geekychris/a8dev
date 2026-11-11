@@ -1,0 +1,7 @@
+{
+  "title": "Lander 3D",
+  "ready": "ld: ready",
+  "description": "Land on a pad in the Moon's craters, Mars's wind or an asteroid's low gravity, with a tank of fuel.",
+  "controls": "Stick tips, FIRE thrust, SELECT/OPTION throttle, B autopilot",
+  "picture": "screenshots/approach.png"
+}

@@ -12,21 +12,22 @@ and demo (three spinning shaded cubes, wireframe on FIRE).
 
 | Part | How | Where |
 |---|---|---|
-| Display | ANTIC mode D, 160 x up to 96 in 4 colours + up to 3 ANTIC 2 text rows | `a3d_init.c` |
+| Display | ANTIC mode D, 160 x up to 96 in 4 colours + up to 3 ANTIC 2 text rows; or (`a3d_double = 1`) up to 48 lines each shown twice: half the lines to fill | `a3d_init.c` |
 | Double buffering | two display lists, switched by the high byte of `SDLSTL` (one store: atomic for the VBI); `a3d_sync` waits for a VBI *after* the switch before the other buffer is drawn | `a3d_init.c` |
 | HUD colours | a DLI on the last 3D line sets the text rows' colours, so COLOR0-2 stay free for the 3D | `a3d_zp.s` |
-| Multiply | quarter squares, one 768-entry table pair for signed and unsigned 8 x 8 (exact, 26 cycles a product) | `a3d_math.s` |
-| Transform | Q7 rotation matrix (int8, 127 = 1.0) x int8 model vertices + int16 origin, rounded | `a3d_math.s` |
-| Projection | z normalised to 128..255, one reciprocal table `f*256/z` for both axes; the pixel aspect lives in the camera matrix's y row | `a3d_math.s` |
-| Matrices | yaw/pitch/roll from a Q7 sine table, 3 x 3 multiply in asm, 16-bit vector rotate | `a3d_mat.c`, `a3d_math.s` |
+| Multiply | quarter squares, one 768-entry table pair for signed and unsigned 8 x 8 (exact, 26 cycles a product), made at start-up by a constructor | `a3d_mul.s` |
+| Transform | Q7 rotation matrix (int8, 127 = 1.0) x int8 model vertices + int16 origin, rounded | `a3d_xform.s` |
+| Projection | z normalised to 128..255, one reciprocal table `f*256/z` for both axes; the pixel aspect lives in the camera matrix's y row | `a3d_xform.s`, `a3d_view.c` |
+| Matrices | yaw/pitch/roll from a Q7 sine table, 3 x 3 multiply in asm, 16-bit vector rotate | `a3d_mat.c`, `a3d_xform.s` |
 | Polygons | convex, clockwise; edges walked from the top into left/right tables (16.8 fixed point, slope = dx * 65536/dy), down edges are the right side, so anticlockwise polygons fill nothing | `a3d_poly.s` |
 | Spans | masked edge bytes from tables by x, whole bytes by an unrolled `sta (p),y / iny` entered at the right point | `a3d_span.s`, `a3d_span.inc` |
 | Shading | two alternating patterns (even/odd lines): 7 shades from 4 colours (`a3d_shade_set`) | `a3d_poly.s`, `a3d_sin.c` |
 | Culling | the screen winding of the first three vertices (8 x 8 cross product, deltas shrunk to fit) | `a3d_poly.s` |
-| Clipping | x by clamping each edge per line (exact for convex polygons); top/bottom by Sutherland-Hodgman in C; the near plane in camera space (C) | `a3d_poly.s`, `a3d_clip.c` |
+| Clipping | x by clamping each edge per line (exact for convex polygons); y in the edge walker (an edge from above line 0 is advanced by slope x the lines skipped, long edges get their slope by a 24/16 divide); the near plane in camera space (C) | `a3d_poly.s`, `a3d_near.c` |
 | Lines | Bresenham with incremental pointer and mask; Cohen-Sutherland clip in C | `a3d_line.s`, `a3d_line.c` |
 | Clearing | rows: one pass of X over all pages with a store per page (5 cycles a byte); or the "dirty" rectangle each buffer recorded | `a3d_span.s` |
-| Maths helpers | `a3d_muldiv` (16 x 16 / 16 in asm), `a3d_mulf` (16 x 16 >> 8) | `a3d_math.s` |
+| Maths helpers | `a3d_muldiv` (16 x 16 / 16 in asm), `a3d_mulf` (16 x 16 >> 8) | `a3d_mul.s` |
+| Low RAM | with `-DA3D_LOWTAB` (C and asm flags) the tables and work arrays go in the SDK's `LOWRAM` ($0C00-$1FFF) | (lander_3d) |
 
 ## Using it
 
@@ -92,7 +93,7 @@ keeps each one inside a budget):
 | clear 40 lines | 13,300 |
 | fill a 40 x 30 rectangle | 12,900 |
 | a 60 x 40 triangle through `a3d_poly` | 17,400 |
-| a big triangle clipped at the top and sides | 61,900 |
+| a big triangle clipped at the top and sides | 51,700 |
 | a 140-pixel line | 16,500 |
 | transform + project 8 vertices | 16,300 (2,000 a vertex) |
 | `a3d_mat_ypr` (C) | 10,500 |
@@ -113,7 +114,7 @@ pixels. So the games draw as little 3D as they can:
 | Game | Frame-rate target | How |
 |---|---|---|
 | stack_tower | measured 48 fps falling, 12-13 turning | rings redrawn only when they change, the core in players (see its README) |
-| lander_3d | 12-17 fps | a coarse terrain grid, the lander a sprite |
+| lander_3d | measured 3-7.5 fps (5.5 average) | a 5 x 4-cell window, the lander in players (see its README) |
 | marble_tilt | 17-25 fps | the maze redrawn only when the tilt changes, the marble a 50 Hz sprite |
 | block_breaker_3d | 50 Hz ball, 25 fps scene | the tunnel drawn once into both buffers, bricks redrawn when hit, ball/shadow/paddle as sprites |
 | orbit_docking | 10-15 fps | wireframe station |
