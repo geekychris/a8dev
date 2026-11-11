@@ -1,0 +1,111 @@
+/* a3d_init.c - display lists, double buffering, projection table, timer. */
+#include <string.h>
+#include "a8game.h"
+#include "a3d_int.h"
+
+#define BUF0   0xA010u
+#define DL0    ((uint8_t *)0xAF10)
+#define DL1    ((uint8_t *)0xBF10)
+
+uint8_t a3d_h;
+uint8_t a3d_back;
+uint8_t a3d_aspect = 109;
+
+static void wait_vbl(void)
+{
+    uint8_t t = RTCLOK2;
+    while (RTCLOK2 == t)
+        ;
+}
+
+/* 24 blank lines, LMS + mode D lines, ANTIC 2 text rows, JVB */
+static void build_dl(uint8_t *d, uint8_t hi, uint8_t lines, uint8_t rows)
+{
+    d[0] = d[1] = d[2] = 0x70;
+    d[3] = 0x4D; d[4] = 0x10; d[5] = hi;
+    memset(d + 6, 0x0D, lines - 1);
+    d += 5 + lines;
+    if (rows) {
+        d[0] = 0x42; d[1] = 0x80; d[2] = 0xAF;
+        memset(d + 3, 0x02, rows - 1);
+        d += 2 + rows;
+    }
+    d[0] = 0x41; d[1] = 0x10; d[2] = (uint8_t)(hi + 0x0F);
+}
+
+void a3d_init(uint8_t lines, uint8_t text_rows)
+{
+    uint8_t i;
+    uint16_t a = BUF0;
+
+    if (lines > A3D_MAXH) lines = A3D_MAXH;
+    if (text_rows > 3) text_rows = 3;
+    a3d_h = lines;
+    for (i = 0; i < A3D_MAXH; ++i) {
+        a3d_ylo[i] = (uint8_t)a;
+        a3d_yhi[i] = (uint8_t)(a >> 8);
+        a += 40;
+    }
+    SDMCTL = SDMCTL & 0x1C;
+    wait_vbl();
+    memset((void *)0xA000, 0, 0x2000);
+    build_dl(DL0, 0xA0, lines, text_rows);
+    build_dl(DL1, 0xB0, lines, text_rows);
+    COLOR0 = A8_COLOR(2, 8);
+    COLOR1 = A8_COLOR(12, 10);
+    COLOR2 = A8_COLOR(9, 6);
+    COLOR4 = 0;
+    if (text_rows) {        /* the text rows' colours come from a DLI */
+        a3d_dl_flag((uint8_t)(lines - 1), 0x80);
+        VDSLST = (uint16_t)a3d_hud_dli;
+        NMIEN = 0xC0;
+    }
+    CHBAS = 0xE0;
+    SDLSTL = (uint16_t)DL0;
+    a3d_back = 1;
+    a3d_bsel = 0x10;
+    wait_vbl();
+    SDMCTL = (SDMCTL & 0x1C) | 0x22;
+    wait_vbl();
+    a3d_view(80, (uint8_t)(lines / 2), 80);
+    a3d_colour(1);
+}
+
+uint8_t *a3d_dlist(uint8_t buf) { return buf ? DL1 : DL0; }
+
+void a3d_dl_flag(uint8_t y, uint8_t flags)
+{
+    /* line 0 is the LMS at offset 3, line y > 0 at offset 5 + y */
+    uint8_t o = y ? (uint8_t)(5 + y) : 3;
+    DL0[o] = (DL0[o] & 0x7F) | flags;
+    DL1[o] = (DL1[o] & 0x7F) | flags;
+}
+
+void a3d_show(void)
+{
+    /* both lists start at $xF10: only the high byte changes (atomic for the VBI) */
+    *(volatile uint8_t *)0x231 = a3d_back ? 0xBF : 0xAF;
+    a3d_back ^= 1;
+    a3d_bsel = a3d_back ? 0x10 : 0x00;
+}
+
+uint8_t a3d_sync(void) { return frame_wait(); }
+
+uint8_t a3d_flip(void)
+{
+    a3d_show();
+    return frame_wait();
+}
+
+void a3d_view(uint8_t cx, uint8_t cy, uint8_t f)
+{
+    uint16_t z, n = (uint16_t)f << 8, v;
+    a3d_vcx = cx;
+    a3d_vcy = cy;
+    a3d_pxlo[0] = a3d_pxhi[0] = 0xFF;
+    for (z = 1; z < 256; ++z) {
+        v = n / z;
+        a3d_pxlo[z] = (uint8_t)v;
+        a3d_pxhi[z] = (uint8_t)(v >> 8);
+    }
+}
