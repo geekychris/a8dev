@@ -1,0 +1,7 @@
+{
+  "title": "StakAttack",
+  "ready": "stak: ready",
+  "description": "Seven gems in seven colours fall into the well: turn and slide them to fill rows before it overflows.",
+  "controls": "Joystick moves, UP turns, DOWN drops, FIRE slams, START pauses",
+  "picture": "screenshots/play.png"
+}
