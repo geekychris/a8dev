@@ -4,12 +4,19 @@
 #include "a3d_int.h"
 
 #define BUF0   0xA010u
-#define DL0    ((uint8_t *)0xAF10)
-#define DL1    ((uint8_t *)0xBF10)
+#define DL0    ((uint8_t *)(a3d_double ? 0xA800 : 0xAF10))
+#define DL1    ((uint8_t *)(a3d_double ? 0xB800 : 0xBF10))
 
 uint8_t a3d_h;
+#ifdef A3D_LOWTAB
+#pragma bss-name (push, "LOWRAM")
+#endif
 uint8_t a3d_ylo[96], a3d_yhi[96];     /* line addresses of buffer 0 (buffer 1: high | $10) */
+#ifdef A3D_LOWTAB
+#pragma bss-name (pop)
+#endif
 uint8_t a3d_back;
+uint8_t a3d_double;                   /* set before a3d_init: every line shown twice */
 
 static void wait_vbl(void)
 {
@@ -18,19 +25,32 @@ static void wait_vbl(void)
         ;
 }
 
-/* 24 blank lines, LMS + mode D lines, ANTIC 2 text rows, JVB */
+/* 24 blank lines, LMS + mode D lines (doubled: an LMS for each of the two
+   showings of every line), ANTIC 2 text rows, JVB */
 static void build_dl(uint8_t *d, uint8_t hi, uint8_t lines, uint8_t rows)
 {
+    uint8_t *start = d, i;
+    uint16_t a = ((uint16_t)hi << 8) | 0x10;
     d[0] = d[1] = d[2] = 0x70;
-    d[3] = 0x4D; d[4] = 0x10; d[5] = hi;
-    memset(d + 6, 0x0D, lines - 1);
-    d += 5 + lines;
+    if (a3d_double) {
+        d += 3;
+        for (i = 0; i < lines; ++i, a += 40) {
+            d[0] = d[3] = 0x4D;
+            d[1] = d[4] = (uint8_t)a;
+            d[2] = d[5] = (uint8_t)(a >> 8);
+            d += 6;
+        }
+    } else {
+        d[3] = 0x4D; d[4] = 0x10; d[5] = hi;
+        memset(d + 6, 0x0D, lines - 1);
+        d += 5 + lines;
+    }
     if (rows) {
         d[0] = 0x42; d[1] = 0x80; d[2] = 0xAF;
         memset(d + 3, 0x02, rows - 1);
         d += 2 + rows;
     }
-    d[0] = 0x41; d[1] = 0x10; d[2] = (uint8_t)(hi + 0x0F);
+    d[0] = 0x41; d[1] = (uint8_t)(uint16_t)start; d[2] = (uint8_t)((uint16_t)start >> 8);
 }
 
 void a3d_init(uint8_t lines, uint8_t text_rows)
@@ -38,7 +58,7 @@ void a3d_init(uint8_t lines, uint8_t text_rows)
     uint8_t i;
     uint16_t a = BUF0;
 
-    if (lines > A3D_MAXH) lines = A3D_MAXH;
+    if (lines > (a3d_double ? 48 : A3D_MAXH)) lines = a3d_double ? 48 : A3D_MAXH;
     if (text_rows > 3) text_rows = 3;
     a3d_h = lines;
     for (i = 0; i < A3D_MAXH; ++i) {
@@ -74,10 +94,21 @@ uint8_t *a3d_dlist(uint8_t buf) { return buf ? DL1 : DL0; }
 
 void a3d_dl_flag(uint8_t y, uint8_t flags)
 {
-    /* line 0 is the LMS at offset 3, line y > 0 at offset 5 + y */
-    uint8_t o = y ? (uint8_t)(5 + y) : 3;
-    DL0[o] = (DL0[o] & 0x7F) | flags;
-    DL1[o] = (DL1[o] & 0x7F) | flags;
+    /* line 0 is the LMS at offset 3, line y > 0 at offset 5 + y; doubled:
+       the second showing of line y at 6 + 6y */
+    uint16_t o;
+    uint8_t *d0, *d1;
+    if (a3d_double) {
+        o = 6 + 6 * (uint16_t)y;
+        d0 = (uint8_t *)0xA800;
+        d1 = (uint8_t *)0xB800;
+    } else {
+        o = y ? 5 + y : 3;
+        d0 = (uint8_t *)0xAF10;
+        d1 = (uint8_t *)0xBF10;
+    }
+    d0[o] = (d0[o] & 0x7F) | flags;
+    d1[o] = (d1[o] & 0x7F) | flags;
 }
 
 static uint8_t shown_at;
@@ -85,7 +116,7 @@ static uint8_t shown_at;
 void a3d_show(void)
 {
     /* both lists start at $xF10: only the high byte changes (atomic for the VBI) */
-    *(volatile uint8_t *)0x231 = a3d_back ? 0xBF : 0xAF;
+    *(volatile uint8_t *)0x231 = (uint8_t)((uint16_t)(a3d_back ? DL1 : DL0) >> 8);
     shown_at = RTCLOK2;
     a3d_back ^= 1;
     a3d_bsel = a3d_back ? 0x10 : 0x00;
