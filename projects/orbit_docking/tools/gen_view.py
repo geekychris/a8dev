@@ -55,7 +55,7 @@ def vert(plane, x, y):
 
 
 polys = []      # (vertex indices, pattern name), far to near
-lods = []       # 0 always, 3 only near (small details)
+lods = []       # 0 always, 3 only near, 2 never (port: the slot's lights, for speed)
 
 
 def poly(plane_xy, name, lod=0):
@@ -77,8 +77,9 @@ def main():
     # the solar panels (z -90)
     for k in range(2):
         sg = -1 if k else 1
+        # port: the dark panel only near (lod 3), for speed
         poly([(P_PANEL, sg * 310, -40), (P_PANEL, sg * 470, -40), (P_PANEL, sg * 470, 40), (P_PANEL, sg * 310, 40)],
-             "panel0" if k == 0 else "panel1")
+             "panel0" if k == 0 else "panel1", 0 if k == 0 else 3)
     # the arms' sides (-60 to -100), then the ring and the arms' fronts (z -60)
     arms = []
     for k in range(4):
@@ -94,9 +95,9 @@ def main():
     # the face, the slot and its lights
     poly([(P_FACE, x, y) for x, y in hub], "face")
     poly([(P_SLOT, -24, -7), (P_SLOT, 24, -7), (P_SLOT, 24, 7), (P_SLOT, -24, 7)], "slot")
-    poly([(P_SLOT, -34, -4), (P_SLOT, -28, -4), (P_SLOT, -28, 4), (P_SLOT, -34, 4)], "green", 3)
-    poly([(P_SLOT, 28, -4), (P_SLOT, 34, -4), (P_SLOT, 34, 4), (P_SLOT, 28, 4)], "green", 3)
-    poly([(P_SLOT, -3, 30), (P_SLOT, 3, 30), (P_SLOT, 3, 36), (P_SLOT, -3, 36)], "red", 3)
+    poly([(P_SLOT, -34, -4), (P_SLOT, -28, -4), (P_SLOT, -28, 4), (P_SLOT, -34, 4)], "green", 2)
+    poly([(P_SLOT, 28, -4), (P_SLOT, 34, -4), (P_SLOT, 34, 4), (P_SLOT, 28, 4)], "green", 2)
+    poly([(P_SLOT, -3, 30), (P_SLOT, 3, 30), (P_SLOT, 3, 36), (P_SLOT, -3, 36)], "red", 2)
     # the approach markers' corners (squares of 68 round the axis, not turning)
     marks = []
     for p in (P_M0, P_M1, P_M2):

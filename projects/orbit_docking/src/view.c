@@ -124,20 +124,30 @@ static uint8_t point(int16_t x, int16_t y, int16_t z, int16_t *sx, int16_t *sy, 
    with the station's), drawn far to near with the debris */
 static const int16_t mark_z[3] = { 150, 260, 420 };
 
+/* port: corner ticks (a quarter of each side from each corner), not the
+   whole squares: half the pixels, and they still frame the port */
+static void tick(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint8_t fast)
+{
+    int16_t tx = x0 + ((x1 - x0) >> 2), ty = y0 + ((y1 - y0) >> 2);
+    if (fast) {
+        a3d_lx0 = (uint8_t)x0; a3d_ly0 = (uint8_t)y0;
+        a3d_lx1 = (uint8_t)tx; a3d_ly1 = (uint8_t)ty;
+        a3d_line_(3);
+    } else a3d_line(x0, y0, tx, ty, 3);
+}
+
 static void marker(uint8_t m)
 {
     const uint8_t *v = mark_v[m];
-    uint8_t k, a, b;
+    uint8_t k, a, b, f;
     if (!pl_on[6 + m] || (G.z >> 4) - mark_z[m] < 30) return;
     for (k = 0; k < 4; ++k)             /* all on the screen: the lines without clipping */
         if ((uint16_t)pv_x[v[k]] > 159 || (uint16_t)pv_y[v[k]] >= LINES) break;
-    for (a = 0; a < 4; ++a) {
-        b = v[(a + 1) & 3];
-        if (k == 4) {
-            a3d_lx0 = (uint8_t)pv_x[v[a]]; a3d_ly0 = (uint8_t)pv_y[v[a]];
-            a3d_lx1 = (uint8_t)pv_x[b]; a3d_ly1 = (uint8_t)pv_y[b];
-            a3d_line_(3);
-        } else a3d_line(pv_x[v[a]], pv_y[v[a]], pv_x[b], pv_y[b], 3);
+    f = k == 4;
+    for (k = 0; k < 4; ++k) {
+        a = v[k]; b = v[(k + 1) & 3];
+        tick(pv_x[a], pv_y[a], pv_x[b], pv_y[b], f);
+        tick(pv_x[b], pv_y[b], pv_x[a], pv_y[a], f);
     }
 }
 

@@ -51,8 +51,8 @@ docking limits and the crash reasons, fuel, the debris, scoring, lives),
 the original's 25 ticks a second, its autopilot (it also flies behind the
 title), the camera looking back down the axis and rolling with the craft
 (rolled to match the slot, the station stands still), the station (the hub,
-its face, the slot and its three lights, four arms, the ring, two solar
-panels), the approach markers, the turning debris, the stars turning with
+its face, the slot, four arms with their sides, the full ring, two solar
+panels), the approach markers (as corner ticks), the turning debris, the stars turning with
 the roll, the instruments.
 
 Changed (marked `port:` in the source):
@@ -74,8 +74,9 @@ Changed (marked `port:` in the source):
 - **The ring is an elliptical annulus** drawn a line at a time (its widths
   kept until its size changes, the lines above and below the middle drawn
   together), not 16 quads alternately shaded: turned, it looks the same.
-  The light details (the slot's lights) are drawn only when the station is
-  near enough to show them.
+  For speed (see Frame rate): the slot's three lights are left out, the
+  panels' dark faces drawn only near, and the markers drawn as corner
+  ticks (a quarter of each side from each corner).
 - **Hidden sides culled** before they're drawn (the hub's and arms' sides
   face away from a camera near the axis), and polygons off the screen
   skipped (`draw_polys`).
@@ -102,22 +103,43 @@ Changed (marked `port:` in the source):
 The log prints `od: ticks5s= frames5s= draw=` every 5 seconds.
 
 - The rules: **25 ticks a second** (the original's), 125-131 in 5 s.
-- The view: **4-5 frames a second** flying by hand (frames5s 20-24),
-  **3.5-4** with the autopilot (it costs about 14K cycles a tick:
-  frames5s 18-21). A frame is about 300K cycles.
+- The view: **5-6 frames a second** flying by hand (frames5s 25-30; it was
+  20-24), **3.2-4.2** with the autopilot (frames5s 16-21: it rolls all the
+  time, so the whole view is cleared each frame, and it costs about 14K
+  cycles a tick). A frame by hand is about 300K cycles with ANTIC's DMA.
 
-Where a frame goes (cycles with ANTIC's DMA, breakpoint timing): clearing
-the view 28K, the planes and radii 45K, the corners 40K, the polygons
-(arms, panels, the hub's face, the slot) 80K, the ring 50-80K, the markers
-35K, the stars 12K when the roll changes.
+Where a frame by hand goes now: the polygons ~100K (the arms are thin quads
+19 lines tall: ~8K each, nearly all of it a span a line), the ring ~45K,
+the corners ~35K, clearing ~25-33K, the markers ~30K, the planes ~21K, the
+rules and the HUD ~30K.
 
-Profiling moved, in turn: the corners from four 16 x 16 products each to
-one 8 x 8 a corner and axis by radius class (from 70K to 40K a frame);
-the ring from 16 quads (215K) to an annulus of spans; the hidden sides
-from a3d's edge walker (12 polygons drawn for nothing, 90K) to a cross
-product test first; the stars from C to asm (75K to 12K); the rules from
-16.16 to 16 bits (no 32-bit products: the autopilot from 19K to 14K a tick,
-and 1.2K of code less).
+**Why not 8 frames a second:** with every part near what the 6502 can do
+for it, a frame is still ~280K cycles; 8 a second needs ~220K. The rest
+would have to come from drawing less: the ring as a thin outline (-30K)
+or no arm sides. The station's look was kept instead: **the full ring and
+the arms' side faces stay**.
+
+The speed passes, in turn:
+
+- the planes' scales from a reciprocal table and the radii by quarter
+  squares, not divisions and `a3d_mulf` (45K to 21K);
+- clearing only what was drawn while the roll holds (the stars stay put;
+  the ring records its rectangle with `a3d_dirty_mark`);
+- a3d's fast fill (`-DA3D_FFILL`): a polygon wholly on the screen is
+  walked down both sides at once, with no edge tables (~5K to ~2.3K fixed
+  a polygon);
+- corners half a turn apart (most of the station) mirrored, not multiplied;
+- slivers under 6 pixels (an arm's side seen edge-on) not drawn; the
+  ring's reciprocals and the plane angles without 32-bit sums; the HUD's
+  numbers 2.5 times a second;
+- detail (port): the markers as corner ticks, the slot's lights left out,
+  the panels' dark faces only near.
+
+Earlier passes: the corners from four 16 x 16 products each to one 8 x 8 a
+corner and axis by radius class (70K to 40K a frame); the ring from 16
+quads (215K) to an annulus of spans; the hidden sides from a3d's edge
+walker (12 polygons drawn for nothing, 90K) to a cross product test first;
+the stars from C to asm (75K to 12K); the rules from 16.16 to 16 bits.
 
 ## Memory
 
@@ -125,13 +147,15 @@ It runs on a 64K 800XL (the test boots it on one): no 130XE banks. The
 game state, the projected corners and the tables made at start-up live in
 the SDK's `LOWRAM` ($0C00-$1FFF, only for programs loaded without DOS: the
 harness and the arcade disk). `-Cl` keeps C locals static, `-Ors` (no
-inlining) keeps the code small.
+inlining) keeps the code small. Its own link config (`orbit_docking.cfg`)
+moves the C stack to $9400-$97FF (1K: the game uses 256 bytes) for the
+room the fast fill needs.
 
 | | debug build | `RELEASE=1` |
 |---|---|---|
-| program `$2000-` | `$8C68` | `$8939` |
-| free below the C stack (`$9000`) | 0.9K | 1.7K |
-| LOWRAM `$0C00-` | `$1D7B` (4.4K of 5K) | the same |
+| program `$2000-` | `$911D` | `$8DEE` |
+| free below the C stack (`$9400`) | 0.7K | 1.5K |
+| LOWRAM `$0C00-` | `$1E98` (4.7K of 5K) | the same |
 | zero page | `$82-$BC` | the same |
 | screen | two buffers `$A010` / `$B010`, display lists `$AF10` / `$BF10`, text rows `$AF80`; PMG `$9800` | |
 
@@ -151,10 +175,8 @@ on the host.
 
 ## Not done yet
 
-- The frame rate: 4-5 frames a second is slow for the original's 25. The
-  next steps would be clearing only what was drawn (and the stars
-  individually), the planes' scales from a reciprocal table, and the arms
-  as thick lines.
+- The frame rate: 5-6 frames a second is slow for the original's 25 (see
+  above: more needs less drawn).
 - The help pages, the big DOCKED / GAME OVER text, music.
 - NTSC: the ticks count 17 ms frames, so the speed is right, the colours
   are PAL's.
