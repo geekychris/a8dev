@@ -69,7 +69,7 @@ Details: docs/mcp.md, docs/emulator-harness.md.
   (`RELEASE=1`, `A8_RELEASE`, `NDEBUG`, `A8_NO_LOG`) compile every log call away, so
   shipped games never touch it. Never write these addresses directly.
 
-- **Memory map is fixed** (sdk/cfg/a8.cfg): program `$2000-$8FFF`, C stack
+- **Memory map is fixed** (sdk/cfg/a8.cfg): optional `LOWRAM` `$0C00-$1FFF` (no DOS only), program `$2000-$8FFF`, C stack
   `$9000-$97FF`, PMG `$9800`, screen `$A000-$BFFF`. `a8_crt_init` moves cc65's
   stack (it starts at MEMTOP, inside our screen) and switches BASIC off on XL/XE.
 - **No printf/puts/conio after `gfx_init`**: the OS screen editor's memory is
@@ -92,6 +92,7 @@ Details: docs/mcp.md, docs/emulator-harness.md.
   every frame. HPOSPn, SIZEPn and POKEY have no shadows.
 - POKEY reads one key at a time (plus SHIFT/CTRL); joystick and console keys are
   separate, so `UP+FIRE+START` works but two letters at once don't.
+- DLIs that `sta WSYNC` cost a scan line each: set the DLI bit only where a colour changes.
 - `-g` is always on: it only adds symbols to the .lbl/.dbg, not code.
 - cc65 C costs ~100 cycles a byte in simple loops; inner loops go in asm (see
   projects/banktest/src/page.s) or use memcpy/memset/memcmp. Avoid 16-bit maths per byte.

@@ -61,3 +61,18 @@ Things that cost time, so they don't again.
   indexes, and use memcpy/memcmp/memset (asm in cc65's library).
 - ANTIC's screen DMA takes ~30% of the CPU with a text screen; `gfx_off()`
   around a long computation gets it back.
+- A DLI that stores to `WSYNC` stops the CPU until the end of the scan line
+  (~100 cycles). One on every ANTIC D row took ~30% of a frame (a8-big):
+  set the DLI bit only on the rows where a colour changes.
+- The SDK's `sound_tick` was C with struct-pointer access: ~1,900 cycles a
+  frame even when silent, 16-23% of boing_twist's CPU. It's asm now (SDK 1.2).
+
+## More memory
+
+- `LOWRAM` ($0C00-$1FFF, 5K, SDK 1.2): for programs loaded without DOS.
+- The 14K under the OS ROM ($C000-$CFFF, $D800-$FFFF): switch the ROM off
+  (PORTB bit 0 = 0) and supply your own NMI/IRQ handlers, copying the
+  shadows to the chips in your VBI. Game-local example:
+  projects/boing_twist/src/os.s (a8-big). The SDK's frame timer, input and
+  sound read OS shadows/RTCLOK, so keep those updated in your handler.
+- The 130XE banks (a8xe.h): 64K of data.

@@ -12,7 +12,7 @@
 
 /* SDK version (sdk/README.md has the changelog and the compatibility rule):
    major * 10000 + minor * 100 + patch. Check with #if A8_SDK_VERSION >= ... */
-#define A8_SDK_VERSION 10100      /* 1.1.0 */
+#define A8_SDK_VERSION 10200      /* 1.2.0 */
 
 #define A8_REG(a)    (*(volatile uint8_t *)(a))
 #define A8_REG16(a)  (*(volatile uint16_t *)(a))
@@ -93,10 +93,21 @@
 #define NMIEN     A8_REG(0xD40E)
 
 /* ---- the a8dev memory map (sdk/cfg/a8.cfg) */
+#define A8_LOWRAM_ADDR  0x0C00    /* $0C00-$1FFF: segment LOWRAM, see below */
+#define A8_LOWRAM_SIZE  0x1400
 #define A8_STACK_ADDR   0x9000
 #define A8_PMG_ADDR     0x9800
 #define A8_SCREEN_ADDR  0xA000
 #define A8_XE_WINDOW    0x4000    /* 130XE bank window $4000-$7FFF */
+
+/* LOWRAM: 5K more for programs loaded without DOS (the harness, the arcade
+   disk). Uninitialised: set it up in code. Not for programs run from DOS
+   (DOS lives there). Outside the 130XE bank window, so fine for bank buffers.
+
+     #pragma bss-name (push, "LOWRAM")
+     static int16_t verts[512];
+     #pragma bss-name (pop)
+*/
 
 /* colour = hue (0..15) * 16 + luminance (0..14, even) */
 #define A8_COLOR(hue, lum) ((uint8_t)(((hue) << 4) | ((lum) & 0x0E)))
