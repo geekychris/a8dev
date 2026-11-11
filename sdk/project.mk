@@ -46,14 +46,17 @@ OPT ?= -Oirs -g
 endif
 
 DEFS    := $(if $(filter 1,$(A8_NO_LOG)),-DA8_NO_LOG) $(if $(filter 1,$(RELEASE)),-DA8_RELEASE)
-CFLAGS   = -t $(CC65_TARGET) $(OPT) -I$(SRC_DIR) -I$(SDK_DIR)/include $(DEFS) $(EXTRA_CFLAGS)
+CFLAGS   = -t $(CC65_TARGET) $(OPT) -I$(SRC_DIR) $(addprefix -I,$(EXTRA_SRC_DIRS)) -I$(SDK_DIR)/include $(DEFS) $(EXTRA_CFLAGS)
 ASFLAGS  = -t $(CC65_TARGET) -g -I$(SRC_DIR) -I$(SDK_DIR)/include $(EXTRA_ASFLAGS)
 LDFLAGS  = -t $(CC65_TARGET) -C $(CFG) $(if $(START),--start-addr $(START)) \
            -m $(BUILD)/$(NAME).map -Ln $(BUILD)/$(NAME).lbl -Wl --dbgfile,$(BUILD)/$(NAME).dbg $(EXTRA_LDFLAGS)
 
 SRCS     := $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/*.s)
 SDK_SRCS := $(wildcard $(SDK_DIR)/src/*.c) $(wildcard $(SDK_DIR)/src/*.s)
-OBJS     := $(patsubst $(SRC_DIR)/%,$(OBJDIR)/%.o,$(SRCS)) $(EXTRA_OBJS)
+X_SRCS   := $(foreach d,$(EXTRA_SRC_DIRS),$(wildcard $(d)/*.c) $(wildcard $(d)/*.s))
+OBJS     := $(patsubst $(SRC_DIR)/%,$(OBJDIR)/%.o,$(SRCS)) $(addprefix $(OBJDIR)/x/,$(addsuffix .o,$(notdir $(X_SRCS)))) $(EXTRA_OBJS)
+vpath %.c $(EXTRA_SRC_DIRS)
+vpath %.s $(EXTRA_SRC_DIRS)
 SDK_OBJS := $(patsubst $(SDK_DIR)/src/%,$(OBJDIR)/sdk/%.o,$(SDK_SRCS))
 SDK_LIB  := $(BUILD)/a8sdk.lib
 OUT      := $(BUILD)/$(NAME).xex
@@ -62,7 +65,7 @@ OUT      := $(BUILD)/$(NAME).xex
 all: $(OUT)
 	@echo "built $(OUT) ($$(wc -c < $(OUT) | tr -d ' ') bytes)"
 
-$(OBJDIR) $(OBJDIR)/sdk:
+$(OBJDIR) $(OBJDIR)/sdk $(OBJDIR)/x:
 	mkdir -p $@
 
 $(SDK_LIB): $(SDK_OBJS)
@@ -87,13 +90,19 @@ $(OUT): $(OBJS) $(SDK_LIB) $(LINK_CFG)
 	     rm -f $@; exit 1; fi; done
 
 # every object depends on all headers: simple and safe for small projects
-HDRS := $(wildcard $(SRC_DIR)/*.h) $(wildcard $(SDK_DIR)/include/*.h) $(wildcard $(SDK_DIR)/src/*.h)
+HDRS := $(wildcard $(SRC_DIR)/*.h) $(foreach d,$(EXTRA_SRC_DIRS),$(wildcard $(d)/*.h)) $(wildcard $(SDK_DIR)/include/*.h) $(wildcard $(SDK_DIR)/src/*.h)
 
 $(OBJDIR)/%.c.o: $(SRC_DIR)/%.c $(HDRS) | $(OBJDIR)
 	cl65 $(CFLAGS) -c --listing $(OBJDIR)/$*.lst -o $@ $<
 
 $(OBJDIR)/%.s.o: $(SRC_DIR)/%.s | $(OBJDIR)
 	ca65 $(ASFLAGS) -o $@ $<
+
+$(OBJDIR)/x/%.c.o: %.c $(HDRS) | $(OBJDIR)/x
+	cl65 $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/x/%.s.o: %.s | $(OBJDIR)/x
+	ca65 $(ASFLAGS) $(addprefix -I,$(EXTRA_SRC_DIRS)) -o $@ $<
 
 $(OBJDIR)/sdk/%.c.o: $(SDK_DIR)/src/%.c $(HDRS) | $(OBJDIR)/sdk
 	cl65 $(CFLAGS) -c -o $@ $<

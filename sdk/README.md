@@ -26,6 +26,7 @@ Changes to `sdk/` go through a PR that keeps `./a8 selftest` green.
 
 ## Changelog
 
+- **1.1.0**: project.mk `EXTRA_SRC_DIRS` (compile shared source directories).
 - **1.0.0**: first release: a8.cfg memory map + crt init, log
   ($D1F0/$D1F1, compiled out with RELEASE=1), frame timer, input, POKEY
   sound/sfx/music, display lists (ANTIC 2/4/D/E/F + text rows), drawing and
