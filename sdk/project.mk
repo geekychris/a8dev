@@ -61,6 +61,14 @@ SDK_OBJS := $(patsubst $(SDK_DIR)/src/%,$(OBJDIR)/sdk/%.o,$(SDK_SRCS))
 SDK_LIB  := $(BUILD)/a8sdk.lib
 OUT      := $(BUILD)/$(NAME).xex
 
+# build/flags: the compile flags of the last build. When they change
+# (RELEASE=1, DEBUG=1, OPT, A8_NO_LOG...) the objects and the SDK library are
+# deleted, so everything is rebuilt with the new flags. (Content, not mtime:
+# Docker's VM clock and the host's disagree by a few ms.)
+FLAGS_STAMP := $(BUILD)/flags
+FLAGS_NOW   := $(CFLAGS) | $(ASFLAGS) | $(CC65_TARGET)
+$(shell mkdir -p $(BUILD); if [ "$$(cat $(FLAGS_STAMP) 2>/dev/null)" != '$(FLAGS_NOW)' ]; then rm -rf $(OBJDIR) $(BUILD)/a8sdk.lib $(BUILD)/*.xex; printf '%s' '$(FLAGS_NOW)' > $(FLAGS_STAMP); fi)
+
 .DEFAULT_GOAL := all
 all: $(OUT)
 	@echo "built $(OUT) ($$(wc -c < $(OUT) | tr -d ' ') bytes)"

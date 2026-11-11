@@ -12,7 +12,7 @@ AltirraOS ROMs) that we can script deterministically.
 ./a8 test <project>         # projects/<p>/test.py if present, else waits for A8:DONE / A8:FAIL
 ./a8 log <project> --frames 600 [--press SPACE@400]
 ./a8 shot <project> -o out.png --until "ready" [--press START@100] [--scale 2]
-./a8 video <project> -o out.gif|.mp4 --until "ready" --frames 150
+./a8 video <project> -o out.gif|.mp4 --until "ready" --frames 150 [--press FIRE@200 --hold LEFT@220 --release ALL@260] [--start N]
 ./a8 log <project> --press RETURN@200 --hold LEFT@250 --release ALL@300 --type "hi@320"
 ./a8 record <project> -o r.json --press START@200   # input recorder + per-frame hashes
 ./a8 replay r.json --runs 2 # re-run it twice: every frame hash must match
