@@ -246,7 +246,7 @@ int main(void)
             if (state == GS_TITLE && state_timer && !--state_timer) od_new_game(777 + next_seed, 1);
             if (msg_timer && !--msg_timer) hud_dirty = 1;
             ++ticks;
-            if (++hud_t >= 5) { hud_t = 0; hud_dirty = 1; }   /* range and closing rate, 5 times a second */
+            if (++hud_t >= 10) { hud_t = 0; hud_dirty = 1; }  /* range and closing rate, 2.5 times a second */
         }
         t0 = a3d_ticks();
         view_draw();
