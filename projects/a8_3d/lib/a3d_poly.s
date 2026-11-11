@@ -37,6 +37,18 @@ bx0:    .res 2               ; polygon bounding box (int16)
 bx1:    .res 2
 by0:    .res 2
 by1:    .res 2
+.ifdef A3D_FFILL
+lcur:   .res 1               ; the chains' current corners (x2)
+rcur:   .res 1
+lend:   .res 1               ; the line each chain's edge ends on
+rend:   .res 1
+pxr:    .res 1               ; pat_e ^ pat_o
+fdx:    .res 1
+fdy:    .res 1
+fsg:    .res 1
+fa:     .res 1
+fsl:    .res 2
+.endif
 
 .segment "CODE"
 ; ------------------------------------------------------------------ polygons
@@ -169,6 +181,24 @@ _a3d_fill:
 :       lda     lbyte,x
         sta     rb1
         jsr     dirty_add
+.ifdef A3D_FFILL
+        ; ---- all on the screen: the fast path (ffill: no tables, no clipping)
+        lda     bx0+1
+        ora     by0+1
+        bne     @gen
+        lda     bx1+1
+        bne     @gen
+        lda     bx1
+        cmp     #161
+        bcs     @gen
+        lda     by1+1
+        bne     @gen
+        lda     _a3d_h
+        cmp     by1
+        bcc     @gen
+        jmp     ffill
+@gen:
+.endif
         ; ---- edges
         lda     #0
         sta     ei
@@ -238,13 +268,25 @@ fl_line:  sty     yy
         bcc     :+
         lda     _a3d_pat_o
 :       sta     pat
+.ifdef A3D_FFILL
+        jsr     pspan
+.else
         SPAN    fl_skip
+.endif
 fl_skip:  ldy     yy
         iny
         cpy     ymax
         beq     :+
         jmp     fl_line
 :       rts
+
+.ifdef A3D_FFILL
+; the span on the current line (p, pat, lb, rb, nml, nmr set): shared by
+; the edge-table fill and ffill
+pspan:  SPAN    psp_out
+psp_out:
+        rts
+.endif
 
 ; walk the edge ia (top) -> ib (16-bit y) into the table at A/X, the lines
 ; of it inside 0..a3d_h
@@ -516,3 +558,218 @@ div24:  lda     #0
 :       dex
         bne     @d
         rts
+
+.ifdef A3D_FFILL
+; ------------------------------------------------------------------ fast path
+; a polygon wholly on the screen (0 <= x <= 160, 0 <= y <= a3d_h): its two
+; chains walked down from the top corner together, a span a line, the same
+; x on each line as the edge walker's (x + 0.5 at the corner, slope |dx| *
+; (65536 / dy) >> 8). ymin, ymax set; the dirty rectangle done.
+lxl     = a3d_t+8
+lxh     = a3d_t+9
+rxl     = a3d_t+10
+rxh     = a3d_t+11
+lsl     = a3d_t+12
+rsl     = a3d_t+14
+
+ffill:  ldx     #0                  ; the top corner
+        stx     lcur
+        lda     _a3d_py
+        sta     yy
+        ldx     #2
+@ft:    lda     _a3d_py,x
+        cmp     yy
+        bcs     :+
+        sta     yy
+        stx     lcur
+:       inx
+        inx
+        cpx     n2
+        bne     @ft
+        lda     lcur
+        sta     rcur
+        jsr     lnext
+        bcc     :+
+        rts
+:       jsr     rnext
+        bcc     :+
+        rts
+:       lda     _a3d_pat_e
+        eor     _a3d_pat_o
+        sta     pxr
+        lda     yy
+        lsr     a
+        lda     _a3d_pat_e
+        bcc     :+
+        lda     _a3d_pat_o
+:       sta     pat
+ff_line:
+        ldy     yy
+        lda     _a3d_ylo,y
+        sta     a3d_p
+        lda     _a3d_yhi,y
+        ora     a3d_bsel
+        sta     a3d_p+1
+        ldx     rxh                 ; the span lxh .. rxh - 1
+        cpx     lxh
+        beq     ff_skip
+        bcc     ff_skip
+        lda     keepr,x
+        sta     nmr
+        lda     rbyte,x
+        sta     rb
+        ldx     lxh
+        lda     keepl,x
+        sta     nml
+        lda     lbyte,x
+        sta     lb
+        jsr     pspan
+ff_skip:
+        inc     yy
+        lda     yy
+        cmp     ymax
+        beq     ff_out
+        lda     pat
+        eor     pxr
+        sta     pat
+        lda     yy                  ; the left edge: on, or the next
+        cmp     lend
+        bne     :+
+        jsr     lnext
+        bcs     ff_out
+        jmp     @r
+:       clc
+        lda     lxl
+        adc     lsl
+        sta     lxl
+        lda     lxh
+        adc     lsl+1
+        sta     lxh
+@r:     lda     yy                  ; the right edge
+        cmp     rend
+        bne     :+
+        jsr     rnext
+        bcs     ff_out
+        jmp     ff_line
+:       clc
+        lda     rxl
+        adc     rsl
+        sta     rxl
+        lda     rxh
+        adc     rsl+1
+        sta     rxh
+        jmp     ff_line
+ff_out: rts
+
+; the left chain's next edge down (the corner before lcur); carry set if it
+; doesn't go down (not convex and clockwise: give up)
+lnext:  ldx     lcur
+        stx     fa
+        txa
+        bne     :+
+        lda     n2
+:       sec
+        sbc     #2
+        tay                         ; Y = the next corner
+        sty     lcur
+        lda     _a3d_py,y
+        sec
+        sbc     _a3d_py,x
+        beq     lnext               ; flat: on along the chain
+        bcc     @bad
+        sta     fdy
+        lda     _a3d_py,y
+        sta     lend
+        jsr     eslope
+        lda     fsl
+        sta     lsl
+        lda     fsl+1
+        sta     lsl+1
+        ldx     fa
+        lda     _a3d_px,x
+        sta     lxh
+        lda     #$80
+        sta     lxl
+        clc
+        rts
+@bad:   sec
+        rts
+
+; the right chain's next edge down (the corner after rcur)
+rnext:  ldx     rcur
+        stx     fa
+        txa
+        clc
+        adc     #2
+        cmp     n2
+        bcc     :+
+        lda     #0
+:       tay
+        sty     rcur
+        lda     _a3d_py,y
+        sec
+        sbc     _a3d_py,x
+        beq     rnext
+        bcc     @bad
+        sta     fdy
+        lda     _a3d_py,y
+        sta     rend
+        jsr     eslope
+        lda     fsl
+        sta     rsl
+        lda     fsl+1
+        sta     rsl+1
+        ldx     fa
+        lda     _a3d_px,x
+        sta     rxh
+        lda     #$80
+        sta     rxl
+        clc
+        rts
+@bad:   sec
+        rts
+
+; fsl = (px[Y] - px[X]) * (65536 / fdy) >> 8, signed 8.8 (|dx| <= 160)
+eslope: lda     _a3d_px,y
+        sec
+        sbc     _a3d_px,x
+        sta     fdx
+        lda     _a3d_px+1,y
+        sbc     _a3d_px+1,x
+        sta     fsg
+        bpl     :+
+        lda     #0
+        sec
+        sbc     fdx
+        sta     fdx
+:       lda     fdx
+        bne     :+
+        sta     fsl
+        sta     fsl+1
+        rts
+:       jsr     mulset_u
+        ldx     fdy
+        ldy     a3d_rec_lo,x
+        MUL                         ; A: (|dx| * rec_lo) >> 8
+        sta     fsl
+        ldx     fdy
+        ldy     a3d_rec_hi,x
+        MUL                         ; X low, A high: |dx| * rec_hi
+        sta     fsl+1
+        txa
+        clc
+        adc     fsl
+        sta     fsl
+        bcc     :+
+        inc     fsl+1
+:       bit     fsg
+        bpl     :+
+        sec
+        lda     #0
+        sbc     fsl
+        sta     fsl
+        lda     #0
+        sbc     fsl+1
+        sta     fsl+1
+:       rts
+.endif
