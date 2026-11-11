@@ -1,0 +1,48 @@
+a8dev: SDL2 window handling.
+- SetVideoMode compared a surface's flags with window flags (never equal), so every
+  resize event re-created the window, which sent another resize event: on macOS the
+  window was re-created about a dozen times at start-up. Re-create it only to switch
+  fullscreen/windowed; otherwise resize it.
+- ModeInfo() logged "fullscreen" for every SDL2 window (the static is only kept on the
+  SDL1 path): report the window's real flags.
+
+diff --git a/src/sdl/video_sw.c b/src/sdl/video_sw.c
+index 180c3d6..e18d5c6 100644
+--- a/src/sdl/video_sw.c
++++ b/src/sdl/video_sw.c
+@@ -171,7 +171,12 @@ void SDL_VIDEO_SW_PaletteUpdate(void)
+ 
+ static void ModeInfo(void)
+ {
++#if SDL2
++	/* a8dev: the static is only kept up to date on the SDL1 path; ask SDL */
++	const char *fullstring = (SDL_GetWindowFlags(SDL_VIDEO_wnd) & SDL_WINDOW_FULLSCREEN) ? "fullscreen" : "windowed";
++#else
+ 	const char *fullstring = fullscreen ? "fullscreen" : "windowed";
++#endif
+ #if SDL2
+ 	const char *vsyncstring = "";
+ #else
+@@ -189,9 +194,21 @@ static void SetVideoMode(int w, int h, int bpp, int windowed)
+ 		flags |= SDL_WINDOW_FULLSCREEN;
+ 	}
+ 
+-	if (SDL_VIDEO_wnd && (!SDL_VIDEO_screen || SDL_VIDEO_screen->flags != flags)) {
++	/* a8dev: this compared a surface's flags with window flags, which never
++	   match, so every resize event destroyed and re-created the window, and
++	   the new window sent another resize event (a dozen re-creations at
++	   start-up on macOS). Re-create only to switch fullscreen/windowed. */
++	if (SDL_VIDEO_wnd && ((SDL_GetWindowFlags(SDL_VIDEO_wnd) & SDL_WINDOW_FULLSCREEN) != (flags & SDL_WINDOW_FULLSCREEN))) {
+ 		SDL_DestroyWindow(SDL_VIDEO_wnd);
+ 		SDL_VIDEO_wnd = 0;
++		SDL_VIDEO_renderer = 0;   /* destroyed with its window, */
++		SDL_VIDEO_texture = NULL; /* and so is the texture */
++	}
++	else if (SDL_VIDEO_wnd) {
++		int cw, ch;
++		SDL_GetWindowSize(SDL_VIDEO_wnd, &cw, &ch);
++		if (cw != w || ch != h)
++			SDL_SetWindowSize(SDL_VIDEO_wnd, w, h);
+ 	}
+ 
+ 	if (!SDL_VIDEO_wnd) {
