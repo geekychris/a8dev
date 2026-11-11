@@ -1,0 +1,7 @@
+{
+  "title": "Nova Defense",
+  "ready": "nova: ready",
+  "description": "Hold off a marching swarm of 48 aliens from behind three crystal shields; shoot the comet for a bonus.",
+  "controls": "Joystick left/right moves, FIRE shoots",
+  "picture": "screenshots/play.png"
+}
