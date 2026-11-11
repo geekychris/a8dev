@@ -89,3 +89,5 @@ Details: docs/mcp.md, docs/emulator-harness.md.
 - POKEY reads one key at a time (plus SHIFT/CTRL); joystick and console keys are
   separate, so `UP+FIRE+START` works but two letters at once don't.
 - `-g` is always on: it only adds symbols to the .lbl/.dbg, not code.
+- cc65 C costs ~100 cycles a byte in simple loops; inner loops go in asm (see
+  projects/banktest/src/page.s) or use memcpy/memset/memcmp. Avoid 16-bit maths per byte.
