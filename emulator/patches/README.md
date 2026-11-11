@@ -117,3 +117,12 @@ time), a few thousand frames/s with breakpoints (checked per instruction).
    `third_party/atari800-build/src-tree` and regenerate it there with
    `git diff -- src > ../../../emulator/patches/0001-a8h-harness-hooks.patch`.
 3. `./a8 selftest` (`A8_TEST_WINDOW=1 .venv/bin/python tools/a8dev/tests/test_emulator.py` for the window path).
+
+## 0002-sdl-keyboard-joystick-arrows.patch (window build only)
+
+Atari800's keyboard joystick 0 defaults to the keypad (8 5 4 6) + Right Ctrl;
+Mac laptops have neither. The patch makes it the arrow keys + Left Alt
+(Option) for fire and keeps the keypad + Right Ctrl as second bindings
+(`kbd_stick0_alt`). Those keys don't reach the Atari keyboard while the
+keyboard joystick is on. Checked with real macOS key events in a window:
+arrows move and Option fires in hello, keypad 4/6 move, Right Ctrl fires.
