@@ -45,6 +45,19 @@ def _timed(a) -> list[tuple[int, str, object]]:
     return sorted(out, key=lambda x: x[0])
 
 
+def _apply(emu: Emulator, kind: str, arg, at: int):
+    if kind == "press":
+        emu.press(arg)
+    elif kind == "hold":
+        emu.hold(arg)
+    elif kind == "release":
+        emu.release(None if arg in ("", "ALL", "all") else arg)
+    elif kind == "type":
+        emu.type(arg.replace("\\n", "\n"))
+    else:
+        emu.sequence([{k: v for k, v in arg.items() if k != "at"}])
+
+
 def _drive(emu: Emulator, frames: int, actions, until: str | None = None) -> bool:
     """Run to `frames` frames since load (or until the log shows `until`),
     doing the timed actions at their frames. Returns whether `until` was seen."""
@@ -54,16 +67,7 @@ def _drive(emu: Emulator, frames: int, actions, until: str | None = None) -> boo
             if n > 0 and emu.run_until(until, n):
                 return True
         emu.run_to(at)
-        if kind == "press":
-            emu.press(arg)
-        elif kind == "hold":
-            emu.hold(arg)
-        elif kind == "release":
-            emu.release(None if arg in ("", "ALL", "all") else arg)
-        elif kind == "type":
-            emu.type(arg.replace("\\n", "\n"))
-        else:
-            emu.sequence([{k: v for k, v in arg.items() if k != "at"}])
+        _apply(emu, kind, arg, at)
     rest = frames - emu.position()["since_load"]
     if until:
         return emu.run_until(until, max(rest, 0))
@@ -127,14 +131,85 @@ def cmd_shot(a) -> int:
     return 0 if found else 1
 
 
+def _save_video(shots, path: str, fps: float) -> None:
+    import shutil
+    import subprocess
+    import tempfile
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if p.suffix.lower() == ".gif":
+        shots[0].save(p, save_all=True, append_images=shots[1:], loop=0,
+                      duration=int(round(1000 / fps)), optimize=False)
+    elif p.suffix.lower() in (".mp4", ".mov", ".webm"):
+        ff = shutil.which("ffmpeg")
+        if not ff:
+            raise SystemExit("ffmpeg not found: use a .gif path, or install ffmpeg")
+        with tempfile.TemporaryDirectory() as tmp:
+            for i, im in enumerate(shots):
+                im.save(Path(tmp) / f"{i:05d}.png")
+            r = subprocess.run([ff, "-y", "-loglevel", "error", "-framerate", f"{fps:g}",
+                                "-i", str(Path(tmp) / "%05d.png"), "-vf",
+                                "scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=neighbor",
+                                "-pix_fmt", "yuv420p", str(p)], capture_output=True, text=True)
+            if r.returncode:
+                raise SystemExit(f"ffmpeg failed: {r.stderr.strip()[-500:]}")
+    else:
+        p.mkdir(parents=True, exist_ok=True)
+        for i, im in enumerate(shots):
+            im.save(p / f"{i:05d}.png")
+
+
 def cmd_video(a) -> int:
+    """Film a run. --press/--hold/--release/--type/--script frames count from
+    the load, as for log/shot; the recording starts at --until's match (or
+    --start, or the load) and covers --frames frames, input applied at its
+    frames during the recording too."""
     prog = resolve_program(a.program)
+    actions = _timed(a)
     with Emulator(machine=_machine_for(prog, a.machine)) as emu:
         emu.load(prog)
-        if a.until and not emu.run_until(a.until, 5000):
-            print(f"warning: {a.until!r} not seen", file=sys.stderr)
-        r = emu.record_video(a.output, a.frames, a.every, a.scale, a.layer)
-    print(f"{r['path']} ({r['frames']} frames, {r['fps']:g} fps, {r['size'][0]}x{r['size'][1]})")
+        if a.until:
+            pending = [x for x in actions]
+            # inputs before the --until match are applied on the way
+            found = False
+            while pending and not found:
+                at, kind, arg = pending[0]
+                n = at - emu.position()["since_load"]
+                if n > 0 and emu.run_until(a.until, n):
+                    found = True
+                    break
+                _apply(emu, kind, arg, at)
+                pending.pop(0)
+            if not found and not emu.run_until(a.until, 5000):
+                print(f"warning: {a.until!r} not seen", file=sys.stderr)
+            actions = pending
+        elif a.start:
+            _drive(emu, a.start, [x for x in actions if x[0] < a.start])
+        start = emu.position()["since_load"]
+        # while filming, a press is a hold and a release 3 frames later (press()
+        # itself runs frames, which would skip pictures)
+        exp = []
+        for at, kind, arg in actions:
+            if at < start:
+                continue
+            if kind == "press":
+                exp += [(at, "hold", arg), (at + 3, "release", arg)]
+            else:
+                exp.append((at, kind, arg))
+        actions = sorted(exp, key=lambda x: x[0])
+        shots = []
+        every = max(1, a.every)
+        for f in range(0, max(1, a.frames), every):
+            target = start + f
+            while actions and actions[0][0] <= target:
+                at, kind, arg = actions.pop(0)
+                emu.run_to(at)
+                _apply(emu, kind, arg, at)
+            emu.run_to(target)
+            shots.append(emu.screenshot(scale=a.scale))
+        fps = 50 / every
+        _save_video(shots, a.output, fps)
+    print(f"{a.output} ({len(shots)} frames, {fps:g} fps, {shots[0].width}x{shots[0].height})")
     return 0
 
 
@@ -301,6 +376,12 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("video")
     p.add_argument("program")
+    p.add_argument("--start", type=int, default=0, help="start recording at this frame since load")
+    p.add_argument("--press", action="append", metavar="KEYS@FRAME", help="press+release (frames since load)")
+    p.add_argument("--hold", action="append", metavar="KEYS@FRAME")
+    p.add_argument("--release", action="append", metavar="KEYS@FRAME", help="ALL@FRAME releases everything")
+    p.add_argument("--type", action="append", metavar="TEXT@FRAME")
+    p.add_argument("--script", help="JSON list of sequence steps with \"at\" frames")
     p.add_argument("-o", "--output", default="video.gif", help=".gif, .mp4 (ffmpeg) or a directory")
     p.add_argument("--machine")
     p.add_argument("--until", help="start recording when the log shows this")
