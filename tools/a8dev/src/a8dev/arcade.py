@@ -8,6 +8,11 @@ A game joins with projects/<p>/arcade.json:
      "description": "about 100 characters", "controls": "joystick, FIRE",
      "picture": "screenshots/play.png"}
 
+"picture" is optional: without it the game is booted headless, run to its
+ready line plus "picture_frames" (default 100) frames, and the screen is
+captured (after "picture_press" keys, e.g. "START", if given). The menu
+shows it at 80x48 in the game's four most common colours.
+
 build() builds the games, writes projects/arcade/build/gen/games.h (titles,
 descriptions, controls in menu order), builds the menu (projects/arcade),
 assembles the boot loader (sdk/boot/boot.s) and writes
@@ -20,7 +25,10 @@ import json
 import subprocess
 from pathlib import Path
 
-from .atr import make_disk, read_directory
+import collections
+import hashlib
+
+from .atr import PIC_BYTES, make_disk, read_directory
 from .emu import repo_root
 
 ROOT = repo_root()
@@ -53,6 +61,8 @@ def games(root: Path | None = None) -> list[dict]:
         out.append({"project": p, "title": g["title"], "ready": g["ready"],
                     "description": g.get("description", ""), "controls": g.get("controls", ""),
                     "picture": str(f.parent / g["picture"]) if g.get("picture") else None,
+                    "picture_frames": int(g.get("picture_frames", 100)),
+                    "picture_press": g.get("picture_press"),
                     "short": p.replace("_", "")[:8]})
     out.sort(key=lambda g: g["title"].lower())
     for i, g in enumerate(out):
@@ -93,7 +103,87 @@ def boot_loader() -> bytes:
     return out.read_bytes()
 
 
-def build(do_build: bool = True, log=print, out_dir: Path = OUT) -> dict:
+def _palette_rgb(pal: bytes) -> list[tuple[int, int, int]]:
+    return [tuple(pal[i * 3:i * 3 + 3]) for i in range(256)]
+
+
+def picture_bytes(img, pal: bytes) -> bytes:
+    """A playfield image (any size, RGB) -> the menu's 1024-byte picture:
+    80x48 pixels, 4 Atari colours (the most common = background)."""
+    from PIL import Image
+    rgb = _palette_rgb(pal)
+    lut: dict = {}
+
+    def index(c):
+        if c not in lut:
+            lut[c] = min(range(0, 256, 2), key=lambda i: sum((a - b) ** 2 for a, b in zip(rgb[i], c)))
+        return lut[c]
+    src = img.convert("RGB").resize((320, 192), Image.NEAREST)
+    px = src.load()
+    blocks = []                          # 80x48 cells of 4x4: their most common colour
+    for y in range(48):
+        row = []
+        for x in range(80):
+            cnt = collections.Counter(index(px[x * 4 + dx, y * 4 + dy]) for dy in range(4) for dx in range(4))
+            row.append(cnt.most_common(1)[0][0])
+        blocks.append(row)
+    freq = collections.Counter(c for r in blocks for c in r)
+    cols = [c for c, _ in freq.most_common(4)]
+    while len(cols) < 4:
+        cols.append(cols[0])
+
+    def nearest(c):
+        return min(range(4), key=lambda k: sum((a - b) ** 2 for a, b in zip(rgb[cols[k]], rgb[c])))
+    out = bytearray(PIC_BYTES)
+    out[0:4] = bytes(cols)
+    for y, r in enumerate(blocks):
+        for bx in range(20):
+            v = 0
+            for k in range(4):
+                v = (v << 2) | nearest(r[bx * 4 + k])
+            out[4 + y * 20 + bx] = v
+    out[-1] = 0xA8
+    return bytes(out)
+
+
+def capture_picture(g: dict, xex: Path, log=print) -> bytes | None:
+    """The game's picture: its arcade.json PNG, or a headless capture.
+    Cached in build/arcade/pics by the XEX's (and picture's) hash."""
+    from .emu import Emulator
+    h = hashlib.md5(xex.read_bytes() + json.dumps([g.get("picture"), g["picture_frames"],
+                                                     g.get("picture_press")]).encode())
+    if g.get("picture") and Path(g["picture"]).exists():
+        h.update(Path(g["picture"]).read_bytes())
+    cache = OUT / "pics" / f"{g['project']}-{h.hexdigest()[:12]}.bin"
+    if cache.exists():
+        return cache.read_bytes()
+    from PIL import Image
+    try:
+        with Emulator() as emu:
+            pal = emu.palette()
+            if g.get("picture") and Path(g["picture"]).exists():
+                img = Image.open(g["picture"])
+            else:
+                emu.load(xex)
+                if not emu.run_until(g["ready"], 3000):
+                    log(f"  {g['project']}: ready line {g['ready']!r} not seen: no picture")
+                    return None
+                if g.get("picture_press"):
+                    emu.press(g["picture_press"])
+                emu.run(g["picture_frames"])
+                img = emu.screenshot(None, border=False)
+    except Exception as ex:                       # no emulator: the menu shows no picture
+        log(f"  {g['project']}: no picture ({ex})")
+        return None
+    data = picture_bytes(img, pal)
+    for old in (OUT / "pics").glob(f"{g['project']}-*.bin"):
+        old.unlink()
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_bytes(data)
+    return data
+
+
+def build(do_build: bool = True, log=print, out_dir: Path = OUT, pictures: bool = True) -> dict:
     gs = games()
     if do_build:
         for g in gs:
@@ -120,7 +210,11 @@ def build(do_build: bool = True, log=print, out_dir: Path = OUT) -> dict:
     boot = boot_loader()
     out_dir.mkdir(parents=True, exist_ok=True)
     image = out_dir / "arcade.atr"
-    entries = make_disk(image, boot, files)
+    pics = []
+    for g, (_, x) in zip(gs, files[1:]):
+        xex = ROOT / "projects" / g["project"] / "build" / f"{g['project']}.xex"
+        pics.append(capture_picture(g, xex if xex.exists() else Path(g["project"]), log) if pictures else None)
+    entries = make_disk(image, boot, files, pics)
     m = {"image": str(image), "games": [{**g, "sector": entries[g["index"] + 1]["sector"]} for g in gs]}
     (out_dir / "manifest.json").write_text(json.dumps(m, indent=1))
     log(f"  {image} ({len(gs)} games, {image.stat().st_size // 1024} KB)")

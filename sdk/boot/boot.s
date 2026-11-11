@@ -7,7 +7,9 @@
 ;                      +0  start sector (word)   +2 length in bytes (3 bytes)
 ;                      +5  flags                 +6 title (26 bytes, ATASCII, 0-padded)
 ;                    entry 0 = the menu (the program the disk boots into)
-;   sectors 17..     the files
+;   sectors 17..264  pictures: 8 sectors (1024 bytes) per directory entry 1..31
+;                    (the menu reads them; see a8dev/atr.py for the format)
+;   sectors 265..    the files
 ;
 ; Fixed entry points for programs (the arcade menu):
 ;   $0706  JMP boot           reload + run the menu (entry 0)
