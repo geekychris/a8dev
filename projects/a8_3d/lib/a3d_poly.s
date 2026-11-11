@@ -366,6 +366,7 @@ walk:
         bcc     @none
         sta     dyc
         ; fast path: both ends inside 0..160 (x is monotonic between them)
+        ldx     ia                  ; (skip's products leave X changed)
         lda     _a3d_px+1,x
         bne     @slow
         lda     _a3d_px,x
