@@ -1,0 +1,7 @@
+{
+  "title": "Sky Knights",
+  "ready": "knights: ready",
+  "description": "Joust on flying mounts: strike from above, catch the pods before they hatch. One or two players.",
+  "controls": "Stick fly, FIRE flap, port 2: player 2",
+  "picture": "screenshots/play.png"
+}
