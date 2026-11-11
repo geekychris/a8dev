@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "a8": {
+      "type": "stdio",
+      "command": "./.venv/bin/a8dev-mcp",
+      "args": []
+    }
+  }
+}

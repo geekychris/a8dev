@@ -16,10 +16,12 @@
 #
 # Memory map: sdk/cfg/a8.cfg (code $2000-$8FFF, stack $9000, PMG $9800,
 # screen $A000-$BFFF). The link fails when MAIN overflows; we also check that
-# LOWCODE/LOWDATA (the 130XE bank helpers) end below the $4000 bank window.
+# LOWBSS/LOWCODE/LOWDATA (the 130XE bank helpers and buffers) end below the
+# $4000 bank window.
 #
 # Overridable: OPT (default -Oirs), CFG (linker config), EXTRA_CFLAGS,
-#   EXTRA_ASFLAGS, EXTRA_LDFLAGS, EXTRA_OBJS, DEBUG=1 (-O0 -g), A8_NO_LOG=1
+#   EXTRA_ASFLAGS, EXTRA_LDFLAGS, EXTRA_OBJS, DEBUG=1 (-O0; -g is always on:
+#   it only adds symbols to the .lbl/.dbg), A8_NO_LOG=1
 #   (compile a8_log calls out), START (load address, default $2000)
 #
 # Run via bin/a8-make (or ./a8 build), which supplies the toolchain.
@@ -39,7 +41,7 @@ OBJDIR  := $(BUILD)/obj
 ifeq ($(DEBUG),1)
 OPT ?= -O0 -g
 else
-OPT ?= -Oirs
+OPT ?= -Oirs -g
 endif
 
 DEFS    := $(if $(filter 1,$(A8_NO_LOG)),-DA8_NO_LOG)
@@ -75,10 +77,10 @@ $(BUILD)/link.cfg: $(CFG) | $(OBJDIR)
 
 $(OUT): $(OBJS) $(SDK_LIB) $(LINK_CFG)
 	cl65 $(subst -C $(CFG),-C $(LINK_CFG),$(LDFLAGS)) -o $@ $(OBJS) $(SDK_LIB)
-	@# LOWCODE/LOWDATA must end below the 130XE bank window ($4000).
+	@# LOWBSS/LOWCODE/LOWDATA must end below the 130XE bank window ($4000).
 	@m=$(BUILD)/$(NAME).map; \
-	 for s in LOWCODE LOWDATA; do \
-	   e=$$(awk -v s=$$s '$$1 == s && NF >= 4 {print $$3; exit}' $$m); \
+	 for s in LOWBSS LOWCODE LOWDATA; do \
+	   e=$$(awk -v s=$$s '$$1 == s && $$3 ~ /^[0-9A-F][0-9A-F][0-9A-F][0-9A-F][0-9A-F][0-9A-F]$$/ {print $$3; exit}' $$m); \
 	   if [ -n "$$e" ] && [ $$((0x$$e)) -ge $$((0x4000)) ]; then \
 	     echo "error: $(NAME): $$s ends at \$$$$e, inside the 130XE bank window (\$$4000-\$$7FFF); make the program's start smaller"; \
 	     rm -f $@; exit 1; fi; done
