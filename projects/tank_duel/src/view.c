@@ -54,10 +54,13 @@ static void offset(uint8_t i, int16_t ox, int16_t oz)
     a3d_vz[i] = ccz + r_cz;
 }
 
-static int16_t ycam(int16_t y)         /* height -> camera y (the pixels' aspect: 109/128) */
+static int16_t ycam_(int16_t y)         /* height -> camera y (the pixels' aspect: 109/128) */
 {
     return (int16_t)((y - EYE) * 109) >> 7;   /* (16 bits: |y - EYE| < 300) */
 }
+#define YMAX 131
+static int16_t ytab[YMAX];              /* ycam for 0..130 (view_init) */
+#define ycam(y) ((uint16_t)(y) < YMAX ? ytab[y] : ycam_(y))
 
 /* the faces of a prism of n corners (clockwise seen from above: world x
    right, z up), bottom vertices 0..n-1, top n..2n-1. port: a side is
@@ -74,20 +77,63 @@ static uint8_t outside(uint8_t i, uint8_t j)
     return a3d_mulf(ez, a3d_vx[i]) - a3d_mulf(ex, a3d_vz[i]) > 2;
 }
 
+/* a face through vertices fi[0..k-1]: straight to a3d_poly when none is
+   behind the near plane (a3d_face's C near-clipping and gather cost ~5,000
+   cycles a face), else through a3d_face */
+static uint8_t nearclip;
+
+static void face(uint8_t k)
+{
+    uint8_t i;
+    if (nearclip) { a3d_face(k, fi); return; }
+    for (i = 0; i < k; ++i) { a3d_px[i] = a3d_sx[fi[i]]; a3d_py[i] = a3d_sy[fi[i]]; }
+    a3d_poly(k);
+}
+
+/* port: far away (beyond LOD units) an object is one polygon, its outline
+   between its leftmost and rightmost vertical edges */
+#define LOD 500
+static int16_t far_d;
+static uint8_t vis;                     /* the sides seen: bit i = side i (corner i to i + 1) */
+
+/* port: which sides of a box face the camera, from the camera's place in
+   the box's own frame (lu across, lv along): no products */
+static void box_vis(int16_t lu, int16_t lv, int16_t a, int16_t b0, int16_t b1)
+{
+    vis = 0;
+    if (lu < -a) vis |= 1;              /* its left (corner 0 -> 1) */
+    if (lv > b1) vis |= 2;              /* its front */
+    if (lu > a) vis |= 4;               /* its right */
+    if (lv < b0) vis |= 8;              /* its back */
+}
+
 static void prism_faces(uint8_t n, const uint8_t *shade, uint8_t top)
 {
-    uint8_t i, j;
+    uint8_t i, j, l, r;
+    nearclip = 0;
+    for (i = 0; i < n + n; ++i) nearclip |= a3d_vclip[i];
+    if (far_d > LOD && !nearclip) {
+        l = r = 0;
+        for (i = 1; i < n; ++i) {
+            if (a3d_sx[i] < a3d_sx[l]) l = i;
+            if (a3d_sx[i] > a3d_sx[r]) r = i;
+        }
+        fi[0] = l; fi[1] = (uint8_t)(n + l); fi[2] = (uint8_t)(n + r); fi[3] = r;
+        a3d_shade_set(shade[1]);
+        face(4);
+        return;
+    }
     for (i = 0; i < n; ++i) {
         j = (uint8_t)(i + 1 == n ? 0 : i + 1);
-        if (!outside(i, j)) continue;
-        fi[0] = i; fi[1] = (uint8_t)(n + i); fi[2] = (uint8_t)(n + j); fi[3] = j;
+        if (!(vis & (1 << i))) continue;
+        fi[0] = j; fi[1] = (uint8_t)(n + j); fi[2] = (uint8_t)(n + i); fi[3] = i;   /* (clockwise on the screen) */
         a3d_shade_set(shade[i]);
-        a3d_face(4, fi);
+        face(4);
     }
     if (top) {
-        for (i = 0; i < n; ++i) fi[i] = (uint8_t)(n + n - 1 - i);
+        for (i = 0; i < n; ++i) fi[i] = (uint8_t)(n + i);
         a3d_shade_set(top);
-        a3d_face(n, fi);
+        face(n);
     }
 }
 
@@ -191,17 +237,29 @@ static void walls(void)
 }
 
 /* ---------- the objects, far to near ---------- */
+#ifdef DBGOBJ
+#include "a8log.h"
+uint8_t dbg_frame;
+#endif
 #define MAXOBJ (TD_MAX_OBS + TD_MAX_TANKS)
 static uint8_t ord[MAXOBJ], nobj;
 static int16_t odist[MAXOBJ];
 
 /* the world's x and z axes in camera space (Q8): x = (cc, cs), z = (-cs, cc) */
+static int16_t rA[3], rB[3];            /* r * cc, r * cs for the radii 26, 34, 50 (a frame's) */
+
 static void obstacle(const Obstacle *o)
 {
-    int16_t r = o->r;
+    int16_t r = o->r, ox = UNITS(o->x), oz = UNITS(o->z), A, B;
+    uint8_t k = r == 26 ? 0 : r == 34 ? 1 : 2;
     static const uint8_t pil[4] = { 2, 4, 3, 1 }, cra[4] = { 3, 5, 4, 2 };
-    centre(UNITS(o->x), UNITS(o->z));
-    corners4(r, -r, r, cc, cs, -cs, cc);    /* clockwise from above */
+    centre(ox, oz);
+    A = rA[k]; B = rB[k];                   /* corners: clockwise from above */
+    a3d_vx[0] = ccx - A + B; a3d_vz[0] = ccz - B - A;
+    a3d_vx[1] = ccx - A - B; a3d_vz[1] = ccz - B + A;
+    a3d_vx[2] = ccx + A - B; a3d_vz[2] = ccz + B + A;
+    a3d_vx[3] = ccx + A + B; a3d_vz[3] = ccz + B - A;
+    box_vis(cam_x - ox, cam_z - oz, r, -r, r);
     if (o->kind == OB_PILLAR) prism(4, 0, 130, pil, 0);
     else if (o->kind == OB_CRATE) prism(4, 0, 56, o->hp >= 2 ? cra : pil, 0);
     else {
@@ -212,11 +270,14 @@ static void obstacle(const Obstacle *o)
         for (i = 0; i < 4; ++i) a3d_vy[i] = b;
         a3d_vx[4] = ccx; a3d_vz[4] = ccz; a3d_vy[4] = ycam(110);
         a3d_project(0, 5);
+        nearclip = 0;
+        for (i = 0; i < 5; ++i) nearclip |= a3d_vclip[i];
         for (i = 0; i < 4; ++i) {
-            if (!outside(i, (uint8_t)(i == 3 ? 0 : i + 1))) continue;
-            fi[0] = i; fi[1] = 4; fi[2] = (uint8_t)(i == 3 ? 0 : i + 1);
+            if (!(vis & (1 << i))) continue;
+            fi[0] = (uint8_t)(i == 3 ? 0 : i + 1); fi[1] = 4; fi[2] = i;
             a3d_shade_set(sh[i]);
-            a3d_face(3, fi);
+            face(3);
+            if (far_d > LOD) break;             /* (far: one face) */
         }
     }
 }
@@ -225,9 +286,12 @@ static void obstacle(const Obstacle *o)
    tank's axes in camera space by the angle between it and the camera */
 static int16_t tux, tuz, tvx, tvz;
 
+static int16_t tlu, tlv;                /* the camera in the tank's frame */
+
 static void tbox(int16_t hw, int16_t z0, int16_t z1, int16_t y0, int16_t y1, const uint8_t *sh, uint8_t top)
 {
     corners4(hw, z0, z1, tux, tuz, tvx, tvz);
+    box_vis(tlu, tlv, hw, z0, z1);
     prism(4, y0, y1, sh, top);
 }
 
@@ -238,6 +302,16 @@ static void tank(const Tank *t, int16_t d)
     int16_t s = td_sin(ry) >> 6, c = td_cos(ry) >> 6;
     tux = c; tuz = -s;                      /* across: the tank's right */
     tvx = s; tvz = c;                       /* along: its front */
+    /* the camera in the tank's frame: across = (cos, -sin), along = (sin, cos) */
+    r_dx = cam_x - UNITS(t->x);
+    r_dz = cam_z - UNITS(t->z);
+    r_cs = td_sin(t->yaw) >> 6;
+    r_cc = td_cos(t->yaw) >> 6;
+    rot2();
+    tlu = r_cx;
+    tlv = r_cz;
+    r_cs = cs;
+    r_cc = cc;
     centre(UNITS(t->x), UNITS(t->z));
     sh[0] = side_shade(t->yaw + 0xC000, lo);    /* its left */
     sh[1] = side_shade(t->yaw, lo);             /* its front */
@@ -291,8 +365,25 @@ static void objects(void)
     }
     for (k = 0; k < n; ++k) {
         i = ord[k];
+        far_d = odist[k];
+#ifdef DBGOBJ
+        if (dbg_frame == 3) {
+            char b[8];
+            a8_log_s("obj "); itoa(i, b, 10); a8_log_s(b); a8_log_s(" d="); itoa(odist[k], b, 10); a8_log_s(b);
+        }
+#endif
         if (i < G.nobs) obstacle(&G.ob[i]);
         else tank(&G.tk[i - G.nobs], odist[k]);
+#ifdef DBGOBJ
+        if (dbg_frame == 3) {
+            char b[8]; uint8_t q;
+            a8_log_s(" vis="); itoa(vis, b, 10); a8_log_s(b);
+            a8_log_s(" nc="); itoa(nearclip, b, 10); a8_log_s(b);
+            for (q = 0; q < 8; ++q) { a8_log_s(" "); itoa(a3d_sx[q], b, 10); a8_log_s(b); a8_log_s(","); itoa(a3d_sy[q], b, 10); a8_log_s(b); }
+            a8_log_s(" v0="); itoa(a3d_vx[0], b, 10); a8_log_s(b); a8_log_s(","); itoa(a3d_vy[0], b, 10); a8_log_s(b); a8_log_s(","); itoa(a3d_vz[0], b, 10); a8_log_s(b);
+            a8_log_c('\n');
+        }
+#endif
     }
     nobj = n;
 }
@@ -370,6 +461,12 @@ void view_draw_unused(void)
     cam_yaw = p->yaw;
     r_cs = cs = td_sin(p->yaw) >> 6;
     r_cc = cc = td_cos(p->yaw) >> 6;
+#ifdef DBGOBJ
+    ++dbg_frame;
+#endif
+    rA[0] = a3d_mulf(26, cc); rB[0] = a3d_mulf(26, cs);
+    rA[1] = a3d_mulf(34, cc); rB[1] = a3d_mulf(34, cs);
+    rA[2] = a3d_mulf(50, cc); rB[2] = a3d_mulf(50, cs);
     {
         uint16_t t = a3d_ticks();
         a3d_clear_dirty(A3D_C0);
@@ -387,6 +484,8 @@ void view_draw_unused(void)
 
 void view_init(void)
 {
+    uint8_t y;
+    for (y = 0; y < YMAX; ++y) ytab[y] = ycam_(y);
     a3d_view(80, V_HORIZON, 80);
 }
 
@@ -441,6 +540,14 @@ void bench_view(void)
     t = a3d_ticks();
     for (i = 0; i < 10; ++i) a3d_project(0, 8);
     a8_log_s("bench: project8 x10 cycles="); { char b[12]; ultoa((unsigned long)a3d_since(t) * 228, b, 10); a8_log_s(b); } a8_log_c('\n');
+#define BT(label, stmt) t = a3d_ticks(); for (i = 0; i < 10; ++i) { stmt; } \
+    a8_log_s(label); { char b[12]; ultoa((unsigned long)a3d_since(t) * 228 / 10, b, 10); a8_log_s(b); } a8_log_c('\n')
+    BT("one: centre ", centre(UNITS(G.ob[0].x), UNITS(G.ob[0].z)));
+    BT("one: corners4 ", corners4(26, -26, 26, cc, cs, -cs, cc));
+    BT("one: ycam ", ycam(130));
+    BT("one: outside ", outside(0, 1));
+    BT("one: obstacle ", far_d = 300; obstacle(&G.ob[0]));
+    BT("one: rot2 ", r_dx = 300; r_dz = 700; rot2());
     t = a3d_ticks();
     for (i = 0; i < 10; ++i) objects();
     a8_log_s("bench: objects x10 cycles="); { char b[12]; ultoa((unsigned long)a3d_since(t) * 228, b, 10); a8_log_s(b); } a8_log_c('\n');

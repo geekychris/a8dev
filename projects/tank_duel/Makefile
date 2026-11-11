@@ -6,6 +6,9 @@ OPT    := -Or -g
 # 512 bytes); a3d's tables and work arrays in LOWRAM ($0C00-$1FFF)
 EXTRA_CFLAGS  := -Cl -DA3D_LOWTAB
 EXTRA_ASFLAGS := -DA3D_LOWTAB
+ifeq ($(DBGOBJ),1)
+EXTRA_CFLAGS += -DDBGOBJ
+endif
 ifeq ($(BENCH),1)
 EXTRA_CFLAGS += -DBENCH
 endif
