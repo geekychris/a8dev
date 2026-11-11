@@ -1,0 +1,7 @@
+{
+  "title": "Jump Quest",
+  "ready": "jq: ready",
+  "description": "RJ and Dale's scrolling platformer: stomp the bugs, grab the goodies, reach the flag in three levels.",
+  "controls": "Joystick runs, FIRE jumps; on the title LEFT/RIGHT picks RJ or Dale",
+  "picture": "screenshots/play.png"
+}
