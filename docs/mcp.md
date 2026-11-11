@@ -26,13 +26,13 @@ browser ─────HTTP────> devbench ──┼──JSON lines─�
 | projects | `list_projects`, `build(project, clean)`, `new_project(name)`, `run_tests(project)` |
 | sessions | `emu_boot(project, window, machine)`, `emu_attach(pid)`, `emu_sessions`, `emu_close`, `emu_status` |
 | machine | `emu_load`, `emu_reset(hard)`, `emu_reload`, `emu_power_cycle`, `emu_reboot`, `emu_machine(130xe/800xl/65xe/600xl/1200xl/800/400/320xe)` |
-| time | `emu_run(frames)`, `emu_run_until(text, max_frames)`, `emu_run_to(frame, cycle)`, `emu_position`, `emu_pause`, `emu_resume(turbo)` |
+| time | `emu_run(frames)`, `emu_run_until(text, max_frames)`, `emu_run_until_signal`, `emu_run_to_addr(addr)`, `emu_run_to(frame, cycle)`, `emu_position`, `emu_pause`, `emu_resume(turbo)` |
 | log | `emu_log(all)` |
 | screen | `emu_look(border, scale)`, `emu_screenshot(path)`, `emu_screen_hash`, `emu_record_video(path)`, `emu_record_gif` |
-| input | `emu_press(keys)`, `emu_hold`, `emu_release`, `emu_type(text)`, `emu_joystick(dirs, port)`, `emu_sequence(steps)` |
+| input | `emu_press(keys)`, `emu_hold`, `emu_release`, `emu_type(text)`, `emu_joystick(dirs, port)`, `emu_console(keys)`, `emu_sequence(steps)` |
 | replay | `emu_record_input(action, path, from_reset)`, `emu_replay(path)`, `emu_input_log`, `emu_checkpoint`, `emu_save_replay` |
 | debugger | `emu_break(addr, condition)`, `emu_watch(addr, length, kind)`, `emu_delete`, `emu_continue(max_frames)`, `emu_stepi`, `emu_step_over`, `emu_regs`, `emu_set_reg`, `emu_disasm`, `emu_backtrace`, `emu_symbols` |
-| memory | `emu_read_mem(addr, length, bank)`, `emu_write_mem(addr, hex, bank)`, `emu_find_mem`, `emu_memory_map` |
+| memory | `emu_read_mem(addr, length, bank, space)`, `emu_write_mem(addr, hex, bank, space)`, `emu_find_mem`, `emu_memory_map`, `emu_hw` (chip registers) |
 | state | `emu_save_state(name)`, `emu_load_state(name)` |
 | arcade | `arcade_games`, `arcade_picture`, `arcade_build`, `arcade_play(game)` |
 | anything | `emu_cmd(cmd, args)` (`emu_cmd("help")`) |

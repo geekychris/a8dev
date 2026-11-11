@@ -52,7 +52,8 @@ Debugging: `emu_break("main")` (C names: `main` or `_main`), `emu_continue(max_f
 `emu_watch("global", 2, "w")`, `emu_stepi`, `emu_step_over`, `emu_regs`, `emu_set_reg`,
 `emu_disasm`, `emu_symbols`, `emu_read_mem("sym")`, `emu_write_mem`, `emu_find_mem`,
 `emu_backtrace`, `emu_read_mem(offset, bank=N)` (130XE banks 0..3, mapped or not),
-`emu_memory_map` (PORTB). `emu_cmd("help")` lists every session command.
+`emu_memory_map` (PORTB), `emu_hw` (chip registers), `emu_read_mem(addr, space="ram")` (RAM under the
+ROMs), `emu_run_until_signal` (a8_done/a8_fail/a8_signal), `emu_run_to_addr`, `emu_console("START")`. `emu_cmd("help")` lists every session command.
 Details: docs/mcp.md, docs/emulator-harness.md.
 
 - Frames are 1/50 s of guest time (PAL 130XE by default).
