@@ -104,13 +104,13 @@ python3 projects/tank_duel/tools/make_gif.py
 |---|---|
 | `$0C00-$1B72` | a8_3d's tables and work arrays, the game state, the view's arrays |
 | `$1C00-$1FBA` | asm: the tank's drive, the shells' flight (loaded there: no DOS) |
-| `$2000-$95B2` | the program: a8_3d (with its convex-object path), the view, the front end, the maths, the SDK |
+| `$2000-$94FF` | the program: a8_3d (with its convex-object path), the view, the front end, the maths, the SDK |
 | `$9600-$97FF` | C stack |
 | `$9800-$99FF` | the font's capitals and digits (copied from the ROM) |
 | `$9B00-$9FFF` | players and missiles |
 | `$A000-$BFFF` | a8_3d's two buffers, display lists, text rows |
 | `$C000-$CE78` | under the ROM: an enemy's mind (`think.s`), the autopilot (`td_ai.c`), the radar |
-| `$D800-$FC8E` | under the ROM: the rules (`td_core.c`; in asm: `apart.s`, `pushout.s`) |
+| `$D800-$FF2B` | under the ROM: the rules (`td_core.c`; in asm: `apart.s`, `pushout.s`), the sine table (`td_fix.c`) |
 
 The XEX loads the code for under the ROM at `$9800`, a part at a time. A
 routine at `$0600`, run by INITAD, switches the ROM off and copies each
@@ -123,12 +123,12 @@ spot at the start of a round (`inview10` is ten times the objects in view):
 
 | | frame rate | a tick of the rules |
 |---|---|---|
-| **round 1** (2 enemies, 2–5 objects in view) | **3.7–6.3 fps** | 19–21K cycles |
-| **round 4** (4 enemies) | 2.9–5.3 fps; 2.9 with ~8 objects in view | 23–29K |
-| **round 8** (7 enemies) | 3.5–3.6 fps | 34–44K |
-| over the test's autopilot game | 2.6–4.8 fps, 3.4 on average | |
+| **round 1** (2 enemies, 2–5 objects in view) | **3.8–6.5 fps** | 18–19K cycles |
+| **round 4** (4 enemies) | 3.0–5.0 fps; 3.0 with ~8 objects in view | 23–30K |
+| **round 8** (7 enemies) | 3.5–3.6 fps | 39–45K |
+| over the test's autopilot game | 3.2–4.4 fps, 3.5 on average | |
 
-A picture costs 175–370K cycles: objects ~65%, walls ~25%, clearing ~7%.
+A picture costs 168–350K cycles: objects ~65%, walls ~25%, clearing ~7%.
 The rules run 12.5 ticks a second. These are wall-clock cycles,
 including ANTIC's DMA and the interrupts. In CPU cycles, a round-8 tick is
 ~20K and an enemy's think 5.9K.
@@ -172,8 +172,11 @@ Changes to the rules themselves:
 - clipping the walls in 2D, with a 16-bit division;
 - level of detail and the draw caps.
 
-**Still to come:** a8-3d is working on a faster fill for upright faces,
-inside the same calls, so tank_duel gets it without changes.
+- a8_3d's fast fill for polygons wholly on the screen (`A3D_FFILL`, on in
+  the Makefile): ~5% off a picture.
+
+To make room for that, the sine table and its maths (`td_fix.c`) moved
+under the ROM.
 
 ## Test
 
