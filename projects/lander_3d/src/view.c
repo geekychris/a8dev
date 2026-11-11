@@ -81,6 +81,7 @@ extern int8_t *pr_h;
 extern uint8_t pr_n;
 extern int16_t pr_x, pr_step, pr_dy, pr_ky, *pr_sx, *pr_sy;
 extern void proj_row(void);
+extern void ld_service(void);     /* game.c: the controls and the sprites, between rows */
 
 static void project(void)
 {
@@ -127,6 +128,7 @@ static void cells(void)
             a3d_px[3] = nx[c];      a3d_py[3] = ny[c];
             a3d_poly(4);
         }
+        ld_service();
     }
 }
 
@@ -185,6 +187,7 @@ void view_draw(void)
     a3d_clear_rows(V_HORIZON, V_LINES, 0x55);                   /* the plain */
     if (nrows >= 2) {
         project();
+        ld_service();
         cells();
     }
     pads();
