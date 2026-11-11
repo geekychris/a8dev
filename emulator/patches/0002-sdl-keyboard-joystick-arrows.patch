@@ -1,0 +1,50 @@
+a8dev: keyboard joystick 0 = arrow keys + Left Alt/Option (fire), with the
+keypad (8 5 4 6) + Right Ctrl still working, for keyboards without a keypad.
+Joystick 1 stays W A S D + Left Ctrl.
+
+diff --git a/src/sdl/input.c b/src/sdl/input.c
+index 7e4ed16..cd2fc90 100644
+--- a/src/sdl/input.c
++++ b/src/sdl/input.c
+@@ -100,6 +100,11 @@ static char lpt_path[MAX_LPT_JOYSTICKS][FILENAME_MAX];
+    Here the defaults if there is no keymap in the config file,
+    in the order up, down, left, right, trigger */
+ static int kbd_stick0[5] = {
++	/* a8dev: arrows + Left Alt (Option on a Mac), so laptops without a
++	   keypad can play; the keypad + Right Ctrl still work (kbd_stick0_alt) */
++	SDLK_UP, SDLK_DOWN, SDLK_LEFT, SDLK_RIGHT, SDLK_LALT
++};
++static const int kbd_stick0_alt[5] = {
+ #if SDL2
+ 	SDLK_KP_8, SDLK_KP_5, SDLK_KP_4, SDLK_KP_6, SDLK_RCTRL
+ #else
+@@ -1629,7 +1634,9 @@ int PLATFORM_Keyboard(void)
+ 	 */
+ 	if (!UI_is_active && kbd_layout_active[0]) {
+ 		if (lastkey == KBD_STICK_0_LEFT || lastkey == KBD_STICK_0_RIGHT ||
+-			lastkey == KBD_STICK_0_UP || lastkey == KBD_STICK_0_DOWN || lastkey == KBD_TRIG_0) {
++			lastkey == KBD_STICK_0_UP || lastkey == KBD_STICK_0_DOWN || lastkey == KBD_TRIG_0 ||
++			lastkey == kbd_stick0_alt[0] || lastkey == kbd_stick0_alt[1] || lastkey == kbd_stick0_alt[2] ||
++			lastkey == kbd_stick0_alt[3] || lastkey == kbd_stick0_alt[4]) {
+ 			key_pressed = 0;
+ 			return AKEY_NONE;
+ 		}
+@@ -2600,7 +2607,8 @@ static int single_stick_port(int num) {
+ 	if (s->kbd != NULL) {
+ 		int i;
+ 		for (i = 0; i < 4; i++) {
+-			if (get_key_state(kbhits, s->kbd[i])) {
++			if (get_key_state(kbhits, s->kbd[i]) ||
++				(s->kbd == kbd_stick0 && get_key_state(kbhits, kbd_stick0_alt[i]))) {
+ 				port &= ~(1 << i);
+ 			}
+ 		}
+@@ -2652,6 +2660,8 @@ int PLATFORM_TRIG(int num)
+ #endif
+ 	if (s->kbd != NULL) {
+ 		trig &= !get_key_state(kbhits, s->kbd[4]);
++		if (s->kbd == kbd_stick0)
++			trig &= !get_key_state(kbhits, kbd_stick0_alt[4]);
+ 	}
+ #ifdef LPTJOY
+ 	if (s->fd_lpt != -1) {
