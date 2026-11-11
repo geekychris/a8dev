@@ -116,7 +116,7 @@ pixels. So the games draw as little 3D as they can:
 | stack_tower | measured 48 fps falling, 12-13 turning | rings redrawn only when they change, the core in players (see its README) |
 | lander_3d | measured 3-7.5 fps (5.5 average) | a 5 x 4-cell window, the lander in players (see its README) |
 | marble_tilt | 17-25 fps | the maze redrawn only when the tilt changes, the marble a 50 Hz sprite |
-| block_breaker_3d | 50 Hz ball, 25 fps scene | the tunnel drawn once into both buffers, bricks redrawn when hit, ball/shadow/paddle as sprites |
+| block_breaker_3d | measured: sprites 40-50 Hz, bitmap 20-25 fps, rules 25 ticks/s | the tunnel never redrawn (a row + a middle run a line), bricks redrawn round a hit, the ball/paddle/capsules/ring in players placed by the VBI (see its README) |
 | orbit_docking | 10-15 fps | wireframe station |
 | tank_duel | 6-10 fps | few, large flat polygons |
 
