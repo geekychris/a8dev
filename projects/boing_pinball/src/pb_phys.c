@@ -46,10 +46,10 @@ static void place(Ball *b, int16_t x, int16_t y)
  * returns the approach speed (V), or -1. */
 extern int16_t __fastcall__ seg_fast(Ball *b, const Seg *s);   /* physasm.s: the interior case below */
 
+static int16_t hit_segment_end(Ball *b, const Seg *s);
 static int16_t hit_segment(Ball *b, const Seg *s)
 {
-    int16_t dx = b->x - s->ax, dy = b->y - s->ay, t, qx, qy, rr = PB_R + s->r, d, nx, ny, vn;
-    int32_t tt;
+    int16_t t;
 #ifdef SEGCHECK
     {   /* the asm against the C (segcheck.c), on a copy */
         extern int16_t seg_ref(Ball *b, const Seg *s);
@@ -67,6 +67,15 @@ static int16_t hit_segment(Ball *b, const Seg *s)
 #endif
     t = seg_fast(b, s);
     if (t != (int16_t)0x8000) return t;
+    return hit_segment_end(b, s);
+}
+
+/* hit_segment past seg_fast: the segment's ends (move_ball calls seg_fast
+   itself and comes here, through mb_seg_end, only when it gives up) */
+static int16_t hit_segment_end(Ball *b, const Seg *s)
+{
+    int16_t dx = b->x - s->ax, dy = b->y - s->ay, t, qx, qy, rr = PB_R + s->r, d, nx, ny, vn;
+    int32_t tt;
     /* port: on the segment's straight part (0 < t < len) the closest
        point's direction is the segment's normal: seg_fast (physasm.s) takes
        the distance from the cross product and the normal +/-(-uy, ux), with
@@ -302,12 +311,24 @@ void mb_cap(Ball *b)
 }
 
 /* a wall, gate, sling or drop target whose box the ball is in */
-void mb_seg(World *w, Ball *b, Seg *s)
+/* a wall whose box the ball is in: physasm.s's move_ball skips a dropped
+   target, counts the test and tries seg_fast itself; it calls mb_seg_end
+   when seg_fast gives up (an end), and mb_seg_hit with a contact's speed */
+void mb_seg_hit(World *w, Ball *b, Seg *s, int16_t imp);
+void mb_seg_end(World *w, Ball *b, Seg *s)
 {
-    int16_t imp;
+    mb_seg_hit(w, b, s, hit_segment_end(b, s));
+}
+
+void mb_seg(World *w, Ball *b, Seg *s)       /* (all of it in C: make SEGCHECK=1) */
+{
     if (s->kind == SK_DROP && !s->up) return;
     w->tests++;
-    imp = hit_segment(b, s);
+    mb_seg_hit(w, b, s, hit_segment(b, s));
+}
+
+void mb_seg_hit(World *w, Ball *b, Seg *s, int16_t imp)
+{
     if (imp <= 0) return;
     if (s->kind == SK_DROP) {
         if (imp > V_MM(90)) { s->up = 0; emit(w, EV_DROP, b->x, b->y, s->id, 0, imp >> 2, b->id); }

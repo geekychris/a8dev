@@ -12,7 +12,7 @@
 ;   plunger, the drain). The order is the original's.
 
         .export _move_ball
-        .import _mb_cap, _mb_seg, _mb_circ, _mb_sens, _mb_flip, _mb_tail
+        .import _mb_cap, _mb_seg, _mb_seg_end, _mb_seg_hit, _mb_circ, _mb_sens, _mb_flip, _mb_tail
         .import _mb_sx0, _mb_sy0, _mb_sx1, _mb_sy1, _mb_sp
         .import _mb_cx, _mb_cy, _mb_crr, _mb_cp
         .import _mb_nx0, _mb_ny0, _mb_nx1, _mb_ny1, _mb_np
@@ -355,8 +355,9 @@ mv_fresh: pla
         jmp     mv_seg
 mv_ns:
         cmp     #1
-        beq     mv_circ
-        jmp     mv_sens
+        bne     mv_ns2
+        jmp     mv_circ
+mv_ns2: jmp     mv_sens
 
 mv_next: jmp    mv_entry
 mv_seg:   ldy     idx                     ; bx < x0 || bx > x1 || by < y0 || by > y1: next
@@ -364,6 +365,8 @@ mv_seg:   ldy     idx                     ; bx < x0 || bx > x1 || by < y0 || by 
         bgt16y  bx, _mb_sx1, mv_next
         blt16y  by, _mb_sy0, mv_next
         bgt16y  by, _mb_sy1, mv_next
+        ldy     idx
+.ifdef SEGCHECK
         push_wb
         ldy     idx
         lda     _mb_sp,y
@@ -371,6 +374,76 @@ mv_seg:   ldy     idx                     ; bx < x0 || bx > x1 || by < y0 || by 
         jsr     _mb_seg
         inc     dirty
         jmp     mv_entry
+.else
+        ; port: pb_phys.c's mb_seg without the C for a miss: a dropped
+        ; target is skipped; the test counted; seg_fast; the C for an end
+        ; (mb_seg_end) or a contact's speed (mb_seg_hit)
+        lda     _mb_sp,y
+        sta     ptr3
+        lda     _mb_sp+1,y
+        sta     ptr3+1
+        ldy     #S_KIND
+        lda     (ptr3),y
+        cmp     #SK_DROP
+        bne     @t
+        ldy     #S_UP
+        lda     (ptr3),y
+        bne     @t
+        jmp     mv_entry
+@t:     lda     mw              ; w->tests++ (offset 535)
+        clc
+        adc     #<(W_TESTS - 512)
+        sta     ptr1
+        lda     mw+1
+        adc     #>(W_TESTS - 512) + 2
+        sta     ptr1+1
+        ldy     #0
+        lda     (ptr1),y
+        clc
+        adc     #1
+        sta     (ptr1),y
+        iny
+        lda     (ptr1),y
+        adc     #0
+        sta     (ptr1),y
+        lda     mbp
+        ldx     mbp+1
+        jsr     pushax
+        lda     ptr3
+        ldx     ptr3+1
+        jsr     _seg_fast
+        cpx     #$80
+        bne     @r
+        cmp     #0
+        bne     @r
+        push_wb                 ; an end: the C
+        ldy     idx
+        lda     _mb_sp,y
+        ldx     _mb_sp+1,y
+        jsr     _mb_seg_end
+        inc     dirty
+        jmp     mv_entry
+@r:     cpx     #$80            ; -1: missed, the ball untouched
+        bcc     @hit
+        jmp     mv_entry
+@hit:   inc     dirty           ; touching (0) or a contact: the ball was moved
+        stx     tmp4
+        ora     tmp4
+        bne     @imp
+        jmp     mv_entry
+@imp:   ldx     tmp4
+        sta     t1
+        stx     t1+1
+        push_wb
+        ldy     idx
+        lda     _mb_sp,y
+        ldx     _mb_sp+1,y
+        jsr     pushax
+        lda     t1
+        ldx     t1+1
+        jsr     _mb_seg_hit
+        jmp     mv_entry
+.endif
 
 mv_circ:  ldy     idx                     ; |bx - cx| < rr && |by - cy| < rr
         lda     bx
@@ -562,6 +635,10 @@ absw:   lda     (ptr4),y
         .importzp ptr3
 
 S_AX    = 0                     ; Seg (pbz.h)
+S_KIND  = 25
+S_UP    = 30
+SK_DROP = 5
+W_TESTS = 535
 S_AY    = 2
 S_UX    = 8
 S_UY    = 10
