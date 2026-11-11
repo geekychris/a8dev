@@ -1,5 +1,4 @@
-/* a3d_line.c - clipped lines, edges and outlines. */
-#include <string.h>
+/* a3d_line.c - clipped lines and points (edges and outlines: a3d_edge.c). */
 #include "a3d_int.h"
 
 /* Cohen-Sutherland to 0..159 x 0..a3d_h-1 */
@@ -38,35 +37,4 @@ void a3d_plot(uint8_t x, uint8_t y, uint8_t c)
     a3d_lx0 = a3d_lx1 = x;
     a3d_ly0 = a3d_ly1 = y;
     a3d_line_(c);
-}
-
-void a3d_edge(uint8_t a, uint8_t b, uint8_t c)
-{
-    if (a3d_vclip[a]) {
-        if (a3d_vclip[b]) return;
-        a3d_near(b, a);
-        a = A3D_TMP;
-    } else if (a3d_vclip[b]) {
-        a3d_near(a, b);
-        b = A3D_TMP;
-    }
-    a3d_line(a3d_sx[a], a3d_sy[a], a3d_sx[b], a3d_sy[b], c);
-}
-
-uint8_t a3d_face_wire(uint8_t n, const uint8_t *idx, uint8_t c)
-{
-    static int16_t wx[A3D_MAXP], wy[A3D_MAXP];
-    uint8_t i, r;
-    a3d_fn = n;
-    r = a3d_gather_(idx);
-    if (r == 2) {
-        n = a3d_gather_near(n, idx);
-        r = n >= 3 && a3d_front_();
-    }
-    if (!r) return 0;
-    memcpy(wx, a3d_px, n * 2);
-    memcpy(wy, a3d_py, n * 2);
-    for (i = 0; i < n; ++i)
-        a3d_line(wx[i], wy[i], wx[i + 1 == n ? 0 : i + 1], wy[i + 1 == n ? 0 : i + 1], c);
-    return 1;
 }

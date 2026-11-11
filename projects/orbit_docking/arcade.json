@@ -1,0 +1,7 @@
+{
+  "title": "Orbit Docking",
+  "ready": "od: ready",
+  "description": "Dock with a spinning space station: roll to match its slot and close in gently, with limited fuel.",
+  "controls": "Stick moves across, FIRE+stick in/out and roll (W S A D), START pause, B autopilot",
+  "picture": "screenshots/lined_up.png"
+}
