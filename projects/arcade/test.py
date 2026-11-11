@@ -32,7 +32,14 @@ with Emulator() as emu:
     check("choose hello and start it", arcade.menu_choose(emu, hello, len(gs), sel=sel))
     emu.run(10)
     emu.reset(hard=False)                      # RESET key: warm start -> DOSINI -> menu
-    check("RESET returns to the menu", arcade.menu_ready(emu, 3000) is not None)
+    sel = arcade.menu_ready(emu, 3000)
+    check("RESET returns to the menu", sel is not None)
+    bank = arcade.find_game(gs, "banktest")    # uses LOWRAM ($0C00-$1FFF) and the 130XE banks
+    check("banktest from the disk (LOWRAM next to the loader)",
+          arcade.menu_choose(emu, bank, len(gs), sel=sel) and emu.run_until("A8:DONE", 3000))
+    emu.reset(hard=False)
+    check("RESET after banktest returns to the menu (loader at $0700-$0BFF intact)",
+          arcade.menu_ready(emu, 3000) is not None)
     if failures:
         print("\n".join(emu.debug_log[-15:]))
 

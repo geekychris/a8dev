@@ -14,11 +14,14 @@
 #include "a8log.h"
 
 /* buffers outside the bank window: this program's BSS ends above $4000,
-   so put them in LOWBSS (right after the start-up code, below $4000) */
+   so put them in LOWBSS (right after the start-up code, below $4000) and
+   LOWRAM ($0C00-$1FFF, no DOS: the harness and the arcade disk) */
 #pragma bss-name (push, "LOWBSS")
+static uint8_t main_sig[16];
+#pragma bss-name (pop)
+#pragma bss-name (push, "LOWRAM")
 uint8_t buf[256];      /* (not static: src/page.s fills them) */
 uint8_t want[256];
-static uint8_t main_sig[16];
 #pragma bss-name (pop)
 
 /* pattern(b, i) = (i * 7 + b * 31 + (i >> 8)) & 0xFF. Within page p

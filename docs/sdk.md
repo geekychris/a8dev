@@ -20,6 +20,7 @@ only carries the modules it calls.
 | Address | Use |
 |---|---|
 | `$0082-$00FF` | cc65 zero page |
+| `$0C00-$1FFF` | `LOWRAM`: optional, uninitialised, only for programs loaded without DOS (the harness, the arcade disk; `$0700-$0BFF` is the arcade's loader) |
 | `$2000-$3FFF` | start-up code, then `LOWBSS`, `LOWCODE`, `LOWDATA`: below the 130XE bank window |
 | `$2000-$8FFF` | program: code, rodata, data, bss (36K) |
 | `$9000-$97FF` | the C stack (2K) |
@@ -93,7 +94,9 @@ key at a time (plus SHIFT/CTRL).
 `snd_note(ch, midi, vol)` (MIDI 48..107), `snd_off(ch)`,
 `snd_sfx(ch, audf, dist, vol, decay, sweep)` (decays each frame).
 Music: `music_play(ch, track, vol)` with `a8_note {note, len}` lists
-(`{0,0}` loops), `music_stop()`; ticked by `frame_wait()`.
+(`{0,0}` loops), `music_stop()`; ticked by `frame_wait()`. `sound_tick` is
+asm: 21 cycles a frame when nothing plays, ~200 with two tracks and an
+effect (projects/soundtest checks it against the C model).
 
 ## 130XE banks
 
