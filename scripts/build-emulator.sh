@@ -50,13 +50,18 @@ export CPPFLAGS="${CPPFLAGS:-} -DA8H"
 # libatari800 leaves NEW_CYCLE_EXACT off; the SDL build has it on. Both must
 # emulate the same machine (a window recording replays headless).
 headless_cpp="-DNEW_CYCLE_EXACT"
+# configure --target=libatari800 appends -Werror to CFLAGS; GCC (Linux) then
+# stops at a harmless "ULONG redefined" warning that clang's
+# -Wno-macro-redefined hides. make CFLAGS=... below replaces the configured
+# CFLAGS (without -Werror) in every Makefile, automake ones included.
+headless_cflags="-O2 -g -Wno-macro-redefined -Wno-unknown-warning-option"
 
 # headless: the libatari800 target (no SDL, no window) + the a8h main loop
 B="$THIRD_PARTY/atari800-build/headless"
 rm -rf "$B"; mkdir -p "$B"
 ( cd "$B" && CPPFLAGS="$CPPFLAGS $headless_cpp" LIBS="-lz" CFLAGS="-O2 -g -Wno-macro-redefined -Wno-unknown-warning-option" "$SRC/configure" --target=libatari800 "${common[@]}" ) >>"$log" 2>&1 \
   || { tail -30 "$log"; die "configure (headless) failed (full log: $log)"; }
-make -C "$B" -j"$(ncpu)" >>"$log" 2>&1 || { tail -30 "$log"; die "build (headless) failed (full log: $log)"; }
+make -C "$B" -j"$(ncpu)" CFLAGS="$headless_cflags" >>"$log" 2>&1 || { tail -30 "$log"; die "build (headless) failed (full log: $log)"; }
 cc -O2 -I"$B/src" -I"$SRC/src" -DA8H -DNEW_CYCLE_EXACT -DHAVE_CONFIG_H -o "$B/atari800-a8h" \
   "$A8_ROOT/emulator/ext/a8h_headless_main.c" "$B/src/libatari800.a" -lm -lz >>"$log" 2>&1 \
   || { tail -30 "$log"; die "link (headless) failed (full log: $log)"; }
