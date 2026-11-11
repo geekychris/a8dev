@@ -65,7 +65,9 @@ Changed (marked `port:` in the code):
   **about 18 of the 25 steps a second** (the attract mode over 20,000
   frames: 18.4), so the ball moves at about three quarters of the
   original's speed. The
-  display is drawn every frame (50 a second). See Not done.
+  ball and flippers are drawn each time the physics steps (about 18 a
+  second); the lamps, the dot-matrix display and the colours keep to the
+  frame. See Not done.
 - Rules: the plunger's pull and the tilt meter's decay per step converted;
   timers in milliseconds instead of floating-point seconds (cc65 has none).
 - The table is foreshortened more than the original's view (0.33 vs 0.44
