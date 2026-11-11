@@ -137,6 +137,9 @@ static int16_t b_x[MAXBMP], b_y[MAXBMP];
 static fix c_px[MAXACT], c_py[MAXACT], c_pz[MAXACT];
 static int16_t c_sx[MAXACT], c_sy[MAXACT];
 static uint8_t c_ok[MAXACT];                /* (cleared as a room is drawn) */
+static uint16_t pc_cell[MAXPICK];
+static int16_t pc_sx[MAXPICK], pc_sy[MAXPICK];
+static uint8_t pc_n;                        /* (0 as a room is drawn) */
 
 static void bmp_list(uint8_t *n, uint8_t *id, int16_t *x, int16_t *y)
 {
@@ -153,9 +156,16 @@ static void bmp_list(uint8_t *n, uint8_t *id, int16_t *x, int16_t *y)
     }
     for (i = 0; i < R.npk && k < MAXBMP; ++i) {
         const Pickup *p = &R.pk[i];
-        proj(((fix)p->x << FXS) + FX / 2, (fix)p->y << FXS, ((fix)p->z << FXS) + FX / 2, &sx, &sy);
+        uint8_t j;
+        /* port: a pickup stays put: its projection once a room (by cell) */
+        for (j = 0; j < pc_n && pc_cell[j] != p->cell; ++j) ;
+        if (j == pc_n && pc_n < MAXPICK) {
+            proj(((fix)p->x << FXS) + FX / 2, (fix)p->y << FXS, ((fix)p->z << FXS) + FX / 2, &pc_sx[j], &pc_sy[j]);
+            pc_cell[j] = p->cell;
+            ++pc_n;
+        }
         id[k] = p->kind == 'R' ? 10 : p->kind == 'K' ? 11 : 12;
-        x[k] = sx; y[k] = sy; ++k;
+        x[k] = pc_sx[j]; y[k] = pc_sy[j]; ++k;
     }
     for (i = 0; i < R.nact && k < MAXBMP; ++i) {
         const Body *b = R.act[i].body;
@@ -277,6 +287,7 @@ void view_room(void)
     pj_ox = 160 + ISO_X * (r->d - r->w) / 2;
     pj_oy = 100 + (3 * ISO_Y + ISO_Z * (r->w + r->d + 2)) / 2;
     memset(c_ok, 0, sizeof c_ok);
+    pc_n = 0;
     bmp_list(&nb, b_id, b_x, b_y);
     bmp_draw_all();
     view_sprites(1);

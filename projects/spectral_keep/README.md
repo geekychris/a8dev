@@ -182,6 +182,9 @@ the HUD. On NTSC the HUD falls off the bottom of the picture, the logic runs
   - Game over, then back to the title.
 - Checks along the way: the explorer and the ghost are players in the hall,
   and the logic's rate there is at least 9 steps a second.
+- Then the Crypt and the Tower are each chosen on the title, and their
+  first room is walked by joystick into the next (the stairs into the
+  catacomb, the foyer into the stairwell), and each new room is drawn.
 - Then a 64K 800XL says it needs a 130XE.
 
 On the host, `make build/host/sim && python3 tools/bot.py` plays the same
@@ -191,7 +194,11 @@ game on the C logic. `tools/trace.py` compares two builds of the logic.
 
 - The armoury (crates riding a lift) runs at about 5 steps a second; the
   physics' moves are still C (only gather, scan and the boxes are asm).
+  A profiling pass: the time is the riders (each crate on the lift is moved
+  by it and again by its own step, in C), and redrawing the lift, its piston
+  and the crates on it every step (the bitmap blits, their restores and the
+  per-step list in C). Taking it to 12.5 would need those in asm.
 - Sprites in front of everything, no shadows, no pickup animation.
 - The original's composed music.
-- The test plays The Gatehouse only. The Crypt and the Tower are drawn on
-  the title and use the same rules.
+- The test plays The Gatehouse through. Of the Crypt and the Tower it
+  walks one room into the next each.
