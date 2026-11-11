@@ -20,7 +20,8 @@ AltirraOS ROMs) that we can script deterministically.
 ./a8 serve <project>        # headless paused session (prints ports)
 ./a8 ctl <cmd> key=value    # remote-control the newest session (./a8 ctl help)
 ./a8 new <name>             # from sdk/template
-./a8 selftest               # build + test everything (do this before saying "done")
+./a8 selftest               # build + test everything (do this before saying "done");
+                            # fails if a test changed a tracked file (write output to build/)
 ./a8 doctor                 # environment problems
 ./a8 devbench               # web UI + REST (/api) + MCP over HTTP (/mcp) on :3680
 ```
