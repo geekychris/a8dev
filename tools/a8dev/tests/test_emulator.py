@@ -494,6 +494,21 @@ def test_window(prog, tmp):
         e.delete()
         e.resume()
         check("resume", e.status()["mode"] == "free")
+        if sys.platform == "darwin":
+            # the window user's keyboard: arrows + Option are joystick 0 (patch 0002).
+            # Key events go straight to the emulator's process: the focus is untouched.
+            e.resume()
+            post = _mac_key_poster()
+            e.log()
+            time.sleep(0.3)
+            for code, flags, want in ((123, 0xA00000, "stick=0B"), (124, 0xA00000, "stick=07"),
+                                      (86, 0x200000, "stick=0B"), (58, 0x80000, "trig=00")):
+                post(e.proc.pid, code, True, flags)
+                time.sleep(0.4)
+                post(e.proc.pid, code, False, 0 if code == 58 else flags)
+                time.sleep(0.3)
+                t = e.log()
+                check(f"window keyboard: mac key {code} -> {want}", want in t and "key=" not in t, t)
         e.record_input("start")
         e.hold("LEFT")
         time.sleep(0.3)
@@ -504,6 +519,25 @@ def test_window(prog, tmp):
         rp = h.replay(tmp / "w.json")
         check("a window recording replays headless, every frame hash", rp["ok"] and rp["compared"] == r["frames"],
               str({k: v for k, v in rp.items() if k != "hashes"}))
+
+
+def _mac_key_poster():
+    import ctypes
+    import ctypes.util
+    cg = ctypes.CDLL(ctypes.util.find_library("ApplicationServices"))
+    cf = ctypes.CDLL(ctypes.util.find_library("CoreFoundation"))
+    cg.CGEventCreateKeyboardEvent.restype = ctypes.c_void_p
+    cg.CGEventCreateKeyboardEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_bool]
+    cg.CGEventPostToPid.argtypes = [ctypes.c_int, ctypes.c_void_p]
+    cg.CGEventSetFlags.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
+    cf.CFRelease.argtypes = [ctypes.c_void_p]
+
+    def post(pid, code, down, flags):
+        ev = cg.CGEventCreateKeyboardEvent(None, code, down)
+        cg.CGEventSetFlags(ev, flags)
+        cg.CGEventPostToPid(pid, ev)
+        cf.CFRelease(ev)
+    return post
 
 
 def main():

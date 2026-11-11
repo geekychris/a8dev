@@ -39,6 +39,13 @@ Only hook calls, all under `#ifdef A8H`; the logic is in `emulator/ext/a8h.c`.
 | `libatari800/libatari800.h` | `STATESAV_MAX_SIZE` 210000 → 1 MB | 130XE states are 270 KB: libatari800 silently dropped the extended banks |
 | `sdl/main.c` | `A8H_Init/Start`, `A8H_LOOP_TOP()` (setjmp + `A8H_FrameStart`), `A8H_FrameEnd()`, an idle callback | the window build's main loop |
 
+## Other patches
+
+| Patch | What |
+|---|---|
+| `0002-sdl-keyboard-joystick-arrows.patch` | window: keyboard joystick 0 = arrow keys + Left Alt/Option (fire), so a laptop without a keypad can play; the keypad (8 5 4 6) + Right Ctrl still work, and those keys don't reach the Atari keyboard |
+| `0003-sdl2-window.patch` | SDL2: the window was destroyed and re-created on every resize (a surface's flags compared with window flags), a dozen times at start-up on macOS; now only to switch fullscreen/windowed. And the log said "fullscreen" for every window |
+
 The headless main loop is `A8H_HeadlessMain()` in a8h.c (libatari800 has no
 `main`).
 
