@@ -15,11 +15,14 @@
 static const uint8_t ball[8] = { 0x3C, 0x7E, 0xFF, 0xFF, 0xFF, 0xFF, 0x7E, 0x3C };
 static const uint8_t ship[8] = { 0x18, 0x18, 0x3C, 0x7E, 0xFF, 0xFF, 0x24, 0x24 };
 
+/* globals so the debugger and tests can read them (emu_read_mem("bx")) */
+uint8_t bx = 60, by = 80, sx = 120, sy = 180;
+uint8_t bounces;
+
 int main(void)
 {
-    uint8_t bx = 60, by = 80, sx = 120, sy = 180, in, pressed;
+    uint8_t in, pressed;
     int8_t dx = 1, dy = 1;
-    uint8_t bounces = 0;
 
     gfx_init(GFX_TEXT, 0);
     gfx_color(2, A8_COLOR(9, 2));          /* dark blue background */
