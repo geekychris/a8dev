@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# Atari 8-bit (400/800/XL/XE/130XE) dev environment – single entry point.
+#
+#   ./a8 setup                   install everything (idempotent)
+#   ./a8 doctor                  check the environment
+#   ./a8 new <name>              create projects/<name> from the template
+#   ./a8 build <project>         compile -> projects/<p>/build/<p>.xex (+ .map .lbl .dbg)
+#   ./a8 run <project|file>      window (free-running); ./a8 ctl and Claude can attach
+#   ./a8 serve <project|file> [--window] [--mode running]   headless session process
+#   ./a8 test <project>          projects/<p>/test.py if present, else wait for A8:DONE
+#   ./a8 log <project> [--frames N] [--press KEYS@FRAME]   guest log (a8_log) dump
+#   ./a8 shot <project> -o out.png [--until TEXT] [--press KEYS@FRAME] [--scale 2]
+#   ./a8 video <project> -o out.gif|.mp4 [--until TEXT] [--frames N]
+#   ./a8 record <project> -o r.json --press SPACE@200 ; ./a8 replay r.json --runs 2   deterministic replay
+#   ./a8 ctl [--port N] <cmd> [key=value ...]               remote-control a session (ctl help)
+#   ./a8 sessions                running sessions
+#   ./a8 symbols <project> [regex]
+#   ./a8 devbench [--port 3680] [--open]                    web UI + REST + MCP over HTTP
+#   ./a8 arcade [--no-build] [--image-only] [--list]   every game + a menu on an ATR disk, in a window
+#   ./a8 clean <project>
+#   ./a8 selftest                build + test everything (do this before saying "done")
+#   ./a8 a8dev ...               raw access to the a8dev CLI
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+source "$ROOT/scripts/lib.sh"
+
+A8DEV="$ROOT/.venv/bin/a8dev"
+PY="$ROOT/.venv/bin/python"
+
+need_a8dev() { [ -x "$A8DEV" ] || die "python env missing – run ./a8 setup (or scripts/setup-python.sh)"; }
+need_emu()   { [ -x "$ATARI800_BIN" ] || die "emulator not built – run ./a8 setup (or scripts/build-emulator.sh)"; }
+
+# Build quietly; show the compiler output only if it fails.
+quiet_build() {
+  mkdir -p "$ROOT/build"
+  local log="$ROOT/build/last-build.log"
+  "$ROOT/bin/a8-make" -C "$1" >"$log" 2>&1 || { cat "$log"; die "build failed"; }
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  setup)   exec "$ROOT/setup.sh" "$@" ;;
+  doctor)  exec "$ROOT/scripts/doctor.sh" "$@" ;;
+  build)   [ $# -ge 1 ] || die "usage: ./a8 build <project>"
+           p="$1"; shift; exec "$ROOT/bin/a8-make" -C "$ROOT/projects/$p" "$@" ;;
+  clean)   [ $# -ge 1 ] || die "usage: ./a8 clean <project>"
+           exec "$ROOT/bin/a8-make" -C "$ROOT/projects/$1" clean ;;
+  devbench|ctl|sessions)
+           need_a8dev; exec "$A8DEV" "$cmd" "$@" ;;
+  replay)  need_a8dev; need_emu; exec "$A8DEV" replay "$@" ;;
+  arcade)  need_a8dev; need_emu; exec "$A8DEV" arcade "$@" ;;
+  run|serve|log|shot|symbols|video|record)
+           need_a8dev; need_emu
+           if [ $# -ge 1 ] && [ -f "$ROOT/projects/$1/Makefile" ]; then
+             # rebuild projects so you always run what you just edited
+             quiet_build "$ROOT/projects/$1"
+           fi
+           exec "$A8DEV" "$cmd" "$@" ;;
+  test)    need_a8dev; need_emu; [ $# -ge 1 ] || die "usage: ./a8 test <project>"
+           t="$1"; shift
+           if [ -f "$ROOT/projects/$t/Makefile" ]; then
+             quiet_build "$ROOT/projects/$t"
+             # projects can ship a host-side test script with richer checks
+             if [ -f "$ROOT/projects/$t/test.py" ] && [ $# -eq 0 ]; then
+               exec "$PY" "$ROOT/projects/$t/test.py"
+             fi
+           fi
+           exec "$A8DEV" test "$t" "$@" ;;
+  new)     [ $# -ge 1 ] || die "usage: ./a8 new <name>"
+           name="$1"
+           [[ "$name" =~ ^[a-z][a-z0-9_]*$ ]] || die "name must be lowercase [a-z0-9_]"
+           dest="$ROOT/projects/$name"
+           [ ! -e "$dest" ] || die "$dest already exists"
+           cp -R "$ROOT/sdk/template" "$dest"
+           rm -rf "$dest/build"
+           for f in Makefile src/main.c test.py; do
+             sed -i.bak -e "s/__NAME__/$name/g" "$dest/$f" && rm -f "$dest/$f.bak"
+           done
+           ok "created projects/$name  –  ./a8 run $name" ;;
+  selftest)
+           need_a8dev; need_emu
+           mkdir -p "$ROOT/build"
+           fails=0
+           for d in "$ROOT"/projects/*/; do
+             p="$(basename "$d")"; [ -f "$d/Makefile" ] || continue
+             step "$p"
+             if ! "$ROOT/bin/a8-make" -C "$d" >"$ROOT/build/selftest-$p.log" 2>&1; then
+               tail -20 "$ROOT/build/selftest-$p.log"; warn "build failed (build/selftest-$p.log)"; fails=$((fails+1)); continue
+             fi
+             "$0" test "$p" || fails=$((fails+1))
+           done
+           step "only our own processes are ever stopped"
+           if grep -rnE "\b(pkill|killall)\b" "$ROOT/tools/a8dev/src" "$ROOT/scripts" "$ROOT/bin" "$ROOT/a8" | grep -v "kill-guard"; then  # kill-guard
+             warn "a name-based kill (other agents' and the user's emulators share this machine)"; fails=$((fails+1))
+           else
+             ok "sessions stop their own PID only"
+           fi
+           for t in "$ROOT"/tools/a8dev/tests/test_*.py; do
+             [ -f "$t" ] || continue
+             n="$(basename "$t" .py)"
+             step "$n"
+             if "$PY" "$t" >"$ROOT/build/selftest-$n.log" 2>&1; then
+               ok "$n ($(grep -c '  PASS' "$ROOT/build/selftest-$n.log") checks)"
+             else
+               grep -E "FAIL|Error|error" "$ROOT/build/selftest-$n.log" | tail -20; warn "$n failed (build/selftest-$n.log)"; fails=$((fails+1))
+             fi
+           done
+           [ "$fails" -eq 0 ] && ok "all pass" || die "$fails check(s) failed" ;;
+  a8dev)   need_a8dev; exec "$A8DEV" "$@" ;;
+  help|-h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *)       die "unknown command '$cmd' (./a8 help)" ;;
+esac

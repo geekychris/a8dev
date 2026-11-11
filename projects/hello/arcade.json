@@ -1,0 +1,6 @@
+{
+  "title": "Hello A8",
+  "ready": "hello: ready",
+  "description": "The a8dev first program: a bouncing ball sprite, a ship you move, POKEY beeps.",
+  "controls": "Joystick left/right, FIRE beeps"
+}

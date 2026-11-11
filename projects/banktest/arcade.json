@@ -1,0 +1,6 @@
+{
+  "title": "130XE Bank Test",
+  "ready": "banktest: banks=",
+  "description": "Fills the 130XE's four extra 16K banks with patterns and checks them.",
+  "controls": "none: watch it"
+}
