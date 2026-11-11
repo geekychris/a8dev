@@ -8,7 +8,7 @@
 ;                            or $FF
 ; G.ob[k]: kind, hp, x (2), z (2), r: 7 bytes (td.h's Obstacle).
 
-        .export _obs_next, _oq_x, _oq_z, _oq_extra, _oq_from
+        .export _obs_next, _oq_x, _oq_z, _oq_extra, _oq_from, _obs_grid
         .import _G
         .importzp ptr1
 
@@ -21,6 +21,10 @@ _oq_from:  .res 1
 reach:     .res 2
 d:         .res 2
 k:         .res 1
+cell:      .res 1
+left:      .res 1
+xs:        .res 1
+_obs_grid: .res 64 * 4          ; per cell: up to 4 obstacles, $FF the end
 
 .segment "CODE"
         .export _obs_base, _obs_n
@@ -29,29 +33,80 @@ _obs_base: .res 2               ; &G.ob[0] (td_core.c sets it)
 _obs_n:    .res 1               ; G.nobs
 .segment "CODE"
 
+; port: a grid of 8 x 8 cells of 256 units over the arena (td_core.c's
+; obs_grid): each cell lists, in order, the obstacles that can reach into it
+; (their box + 40 units); a query looks only at the point's cell
 _obs_next:
-        lda     _oq_from
+        ; the cell: ((x + 16384) >> 12) + ((z + 16384) >> 12) * 8, clamped
+        lda     _oq_x+1
+        clc
+        adc     #$40
+        bpl     :+
+        lda     #0
+:       cmp     #$80
+        bcc     :+
+        lda     #$7F
+:       lsr
+        lsr
+        lsr
+        lsr
+        sta     cell
+        lda     _oq_z+1
+        clc
+        adc     #$40
+        bpl     :+
+        lda     #0
+:       cmp     #$80
+        bcc     :+
+        lda     #$7F
+:       and     #$70
+        lsr
+        ora     cell
+        sta     cell            ; 0..63
+        asl                     ; * 4: the cell's list
+        asl
+        tax
+        lda     #4
+        sta     left
+@loop:  lda     _obs_grid,x
+        cmp     #$FF
+        beq     @none           ; (the list's end)
+        cmp     _oq_from
+        bcc     @next
         sta     k
-        ; ptr1 = obs_base + from * 7
+        stx     xs
+        ; ptr1 = obs_base + k * 7
         asl
         asl
         asl
         sec
-        sbc     k               ; from * 7 (from < 32)
+        sbc     k
         clc
         adc     _obs_base
         sta     ptr1
         lda     _obs_base+1
         adc     #0
         sta     ptr1+1
-@loop:  lda     k
-        cmp     _obs_n
-        bcs     @none
-        ldy     #1              ; hp
+        jsr     test
+        ldx     xs
+        bcs     @next
+        lda     k               ; found
+        ldx     #0
+        rts
+@next:  inx
+        dec     left
+        bne     @loop
+@none:  lda     #$FF
+        ldx     #0
+        rts
+
+; obstacle at ptr1: carry clear if it stands and its box holds the point
+test:   ldy     #1              ; hp
         lda     (ptr1),y
-        beq     @next
-        ; reach = (r + extra) * 16
-        ldy     #6
+        bne     :+
+        sec
+        rts
+:       ldy     #6              ; reach = (r + extra) * 16
         lda     (ptr1),y
         clc
         adc     _oq_extra
@@ -67,7 +122,6 @@ _obs_next:
         asl     reach
         rol
         sta     reach+1
-        ; d = x - ox, |d| < reach ?
         ldy     #2
         sec
         lda     _oq_x
@@ -77,7 +131,7 @@ _obs_next:
         lda     _oq_x+1
         sbc     (ptr1),y
         jsr     inreach
-        bcs     @next
+        bcs     @no
         ldy     #4
         sec
         lda     _oq_z
@@ -86,22 +140,8 @@ _obs_next:
         iny
         lda     _oq_z+1
         sbc     (ptr1),y
-        jsr     inreach
-        bcs     @next
-        lda     k               ; found
-        ldx     #0
-        rts
-@next:  inc     k
-        clc
-        lda     ptr1
-        adc     #7
-        sta     ptr1
-        bcc     @loop
-        inc     ptr1+1
-        bne     @loop
-@none:  lda     #$FF
-        ldx     #0
-        rts
+        jmp     inreach
+@no:    rts
 
 ; d (lo in d, hi in A): carry clear if |d| < reach
 inreach:

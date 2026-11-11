@@ -21,3 +21,5 @@ include $(A8_SDK)/project.mk
 # under the OS ROM (tank_duel.cfg, xload.s, os.s)
 $(OBJDIR)/td_core.c.o: EXTRA_CFLAGS += --code-name HI1CODE --rodata-name HI1CODE
 $(OBJDIR)/td_ai.c.o: EXTRA_CFLAGS += --code-name HI2CODE --rodata-name HI2CODE
+$(OBJDIR)/radar.c.o: EXTRA_CFLAGS += --code-name HI2CODE --rodata-name HI2CODE
+$(OBJDIR)/view.c.o: EXTRA_CFLAGS += --bss-name LOWRAM

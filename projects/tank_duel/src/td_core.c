@@ -135,6 +135,31 @@ static void place_obstacles(void)
     }
 }
 
+/* port: the obstacles each grid cell (8 x 8 of 256 units, obs.s) can be
+   reached from: those whose box, widened by 40 units (the widest query), meets it */
+static void obs_build(void)
+{
+    uint8_t k, cx, cz, n;
+    int16_t x0, x1, z0, z1, m;
+    memset(obs_grid, 0xFF, sizeof(obs_grid));
+    for (k = 0; k < G.nobs; ++k) {
+        const Obstacle *o = &G.ob[k];
+        m = o->r + 40;
+        x0 = (UNITS(o->x) - m + 1024) >> 8; x1 = (UNITS(o->x) + m + 1024) >> 8;
+        z0 = (UNITS(o->z) - m + 1024) >> 8; z1 = (UNITS(o->z) + m + 1024) >> 8;
+        if (x0 < 0) x0 = 0;
+        if (z0 < 0) z0 = 0;
+        if (x1 > 7) x1 = 7;
+        if (z1 > 7) z1 = 7;
+        for (cz = (uint8_t)z0; cz <= (uint8_t)z1; ++cz)
+            for (cx = (uint8_t)x0; cx <= (uint8_t)x1; ++cx) {
+                uint8_t *l = obs_grid[cz * 8 + cx];
+                for (n = 0; n < 4 && l[n] != 0xFF; ++n) ;
+                if (n < 4) l[n] = k;        /* (four at most: more would need 90 units apart broken) */
+            }
+    }
+}
+
 void td_load_round(uint8_t round)
 {
     uint8_t k, n = 0, t, j;
@@ -145,6 +170,7 @@ void td_load_round(uint8_t round)
     place_obstacles();
     obs_base = G.ob;
     obs_n = G.nobs;
+    obs_build();
     G.ntanks = 0;
     td_add_tank(TK_PLAYER, 0, -U(800), 0);
     if (round > 1) G.tk[0].hp = keep + 30 > TD_HP ? TD_HP : keep + 30;
@@ -314,12 +340,27 @@ static void damage(uint8_t tank, uint8_t amount, pos x, pos z)
 /* ---------- shells ---------- */
 static void shells(void)
 {
-    uint8_t k, s, j;
+    uint8_t k, s, j, obs_near, tank_near;
     Shell *sh = G.sh;
     const pos lim = U(TD_ARENA);
     for (k = 0; k < TD_MAX_SHELLS; k++, sh++) {
         if (!sh->alive) continue;
         if (--sh->life == 0) { sh->alive = 0; continue; }
+        /* port: what this tick's path (4 steps of 16 units) can reach, asked
+           once at its middle: any obstacle within 40 units more, the tanks
+           within their radius + 40 (most of a shell's flight is in the open) */
+        {
+            pos mx = sh->x + sh->dx + sh->dx, mz = sh->z + sh->dz + sh->dz;
+            Tank *t = G.tk;
+            oq_x = mx; oq_z = mz; oq_extra = 40; oq_from = 0;
+            obs_near = obs_next() != 0xFF;
+            tank_near = 0;
+            for (j = 0; j < G.ntanks; j++, t++) {
+                pos dx = mx - t->x, dz = mz - t->z;
+                if (t->alive && dx < U(TD_TANK_R + 40) && dx > -U(TD_TANK_R + 40) &&
+                    dz < U(TD_TANK_R + 40) && dz > -U(TD_TANK_R + 40)) tank_near |= (uint8_t)(1 << j);
+            }
+        }
         for (s = 0; s < TD_SHELL_STEPS && sh->alive; s++) {
             sh->x += sh->dx;
             sh->z += sh->dz;
@@ -333,7 +374,7 @@ static void shells(void)
             }
             /* obstacles (port: the boxes in asm, obs.s) */
             oq_x = sh->x; oq_z = sh->z; oq_extra = 0; oq_from = 0;
-            while ((j = obs_next()) != 0xFF) {
+            while (obs_near && (j = obs_next()) != 0xFF) {
                 Obstacle *o = &G.ob[j];
                 oq_from = j + 1;
                 if (o->kind == OB_CRATE) {
@@ -353,6 +394,7 @@ static void shells(void)
                 Tank *t = G.tk;
                 for (j = 0; j < G.ntanks; j++, t++) {
                     pos dx, dz;
+                    if (!(tank_near & (1 << j))) continue;
                     if (!t->alive || (j == sh->owner && sh->bounces)) continue;
                     if (sh->owner != 0 && j != 0) continue;         /* enemies' shells pass their own side */
                     dx = sh->x - t->x;

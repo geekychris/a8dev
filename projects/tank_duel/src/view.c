@@ -242,6 +242,8 @@ static void walls(void)
 uint8_t dbg_frame;
 #endif
 #define MAXOBJ (TD_MAX_OBS + TD_MAX_TANKS)
+#define VIEW_FAR 1300                   /* port: nothing beyond (the radar shows it) */
+#define MAXDRAW 8                       /* port: at most this many objects drawn */
 static uint8_t ord[MAXOBJ], nobj;
 static int16_t odist[MAXOBJ];
 
@@ -354,7 +356,7 @@ static void objects(void)
         r_dz = dz;
         rot2();
         cz = r_cz;
-        if (cz < A3D_NEAR - r) continue;
+        if (cz < A3D_NEAR - r || cz > VIEW_FAR) continue;   /* port: a draw distance */
         cx = r_cx;
         if (cx > cz + r + r || cx < -cz - r - r) continue;   /* (90 degrees and a margin) */
         /* insert by distance, far first */
@@ -363,7 +365,9 @@ static void objects(void)
         odist[j] = cz;
         ++n;
     }
-    for (k = 0; k < n; ++k) {
+    /* port: the nearest MAXDRAW only (the farthest are dropped) */
+    k = n > MAXDRAW ? (uint8_t)(n - MAXDRAW) : 0;
+    for (; k < n; ++k) {
         i = ord[k];
         far_d = odist[k];
 #ifdef DBGOBJ

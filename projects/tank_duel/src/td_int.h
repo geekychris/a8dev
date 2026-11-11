@@ -21,4 +21,5 @@ extern pos oq_x, oq_z;
 extern uint8_t oq_extra, oq_from, obs_n;
 extern const Obstacle *obs_base;
 uint8_t obs_next(void);
+extern uint8_t obs_grid[64][4];        /* per 256-unit cell: the obstacles that reach it, $FF ends */
 #endif

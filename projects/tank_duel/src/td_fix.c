@@ -48,7 +48,8 @@ const int16_t td_sin_tab[320] = {
      16069,  16143,  16207,  16261,  16305,  16340,  16364,  16379,
 };
 
-/* atan(t / 128) for t = 0..128, in 1/65536 turn */
+/* atan(t / 128) for t = 0..128, in 1/65536 turn (the host's; atan.s has its own) */
+#ifdef HOST
 static const uint16_t atan_tab[129] = {
     0, 81, 163, 244, 326, 407, 489, 570, 651, 732, 813, 894,
     975, 1056, 1136, 1217, 1297, 1377, 1457, 1537, 1617, 1696, 1775, 1854,
@@ -62,22 +63,40 @@ static const uint16_t atan_tab[129] = {
     7310, 7358, 7405, 7451, 7498, 7544, 7589, 7635, 7679, 7724, 7768, 7812,
     7856, 7899, 7942, 7984, 8026, 8068, 8110, 8151, 8192,
 };
+#endif
 
-/* the angle of (x, z) from +z towards +x */
+/* the angle of (x, z) from +z towards +x (atan.s on the Atari: no division) */
+#ifdef HOST
 uint16_t td_atan2(pos x, pos z)
 {
     uint16_t ax = x < 0 ? (uint16_t)-x : (uint16_t)x, az = z < 0 ? (uint16_t)-z : (uint16_t)z, a, lo, hi;
     uint8_t t;
     if (!ax && !az) return 0;
     if (ax <= az) { lo = ax; hi = az; } else { lo = az; hi = ax; }
-    while (hi > 511) { hi >>= 1; lo >>= 1; }       /* (lo * 128 fits 16 bits) */
-    t = hi ? (uint8_t)((lo << 7) / hi) : 0;
+    while (hi > 127) { hi >>= 1; lo >>= 1; }
+    while (hi < 64) { hi <<= 1; lo <<= 1; }
+    {
+        uint32_t r = (128u * 256u + (hi / 2)) / hi;     /* (the table's rounding) */
+        uint32_t tt = ((uint32_t)lo * (uint32_t)((128.0 * 256.0 / hi) + 0.5)) >> 8;
+        (void)r;
+        t = tt > 128 ? 128 : (uint8_t)tt;
+    }
     a = atan_tab[t];
     if (ax > az) a = 16384 - a;
     if (z < 0) a = 32768 - a;
     if (x < 0) a = (uint16_t)-a;
     return a;
 }
+#else
+extern pos at_x, at_z;
+extern uint16_t __fastcall__ td_atan2_(void);
+uint16_t td_atan2(pos x, pos z)
+{
+    at_x = x;
+    at_z = z;
+    return td_atan2_();
+}
+#endif
 
 /* |(x, z)|: max - max/32 + 3/8 min (+ min/64): within 4% (fast.s on the
    Atari: 1,000 cycles in C) */
