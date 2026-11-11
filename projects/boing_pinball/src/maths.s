@@ -395,7 +395,7 @@ _udiv32_16:
         sta     pr+2
         lda     sreg+1
         sta     pr+3
-        jmp     div32
+        jmp     div16q
 
 ; (a << 14) / d, truncated towards 0, to 16 bits (as C's (int16_t) of it)
 _div_q14:
@@ -441,8 +441,48 @@ _div_q14:
         lsr     pr+3
         ror     pr+2
         ror     pr+1
-        jsr     div32
+        jsr     div16q
         jmp     dq_sign
+; pr = pr / mb when the quotient fits 16 bits (pr's high word < mb): the
+; remainder starts as the high word and 16 steps bring in the low word
+; (the same quotient and remainder as div32's 32 steps, in half the time);
+; returns the quotient in A/X
+div16q: lda     pr+2            ; (a quotient past 16 bits: the long way)
+        cmp     mb
+        lda     pr+3
+        sbc     mb+1
+        bcc     @fits
+        jmp     div32
+@fits:  lda     pr+2
+        sta     tmp1
+        lda     pr+3
+        sta     tmp2
+        lda     #0
+        sta     pr+2
+        sta     pr+3
+        ldx     #16
+@div:   asl     pr
+        rol     pr+1
+        rol     tmp1
+        rol     tmp2
+        bcs     @sub
+        lda     tmp1
+        cmp     mb
+        lda     tmp2
+        sbc     mb+1
+        bcc     @nos
+@sub:   lda     tmp1
+        sbc     mb
+        sta     tmp1
+        lda     tmp2
+        sbc     mb+1
+        sta     tmp2
+        inc     pr
+@nos:   dex
+        bne     @div
+        lda     pr
+        ldx     pr+1
+        rts
 ; pr = pr / mb (32 / 16 -> 32), restoring division, remainder in tmp1/tmp2;
 ; returns the low 16 bits in A/X
 div32:  lda     #0

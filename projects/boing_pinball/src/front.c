@@ -453,7 +453,7 @@ static void entry_input(uint8_t edge, uint8_t key)
 
 int main(void)
 {
-    uint8_t b, n, held, edge, key, due = 0;
+    uint8_t b, n, held, edge, key, due = 0, stepped;
     for (b = 0; b < 4; ++b)
         if (!bank_ok(b)) { a8_log("pb: no banks\n"); a8_fail("needs a 130XE"); for (;;) ; }
     os_off();
@@ -486,14 +486,20 @@ int main(void)
         /* 25 steps a second: one every second frame, at most two a frame */
         due += n;
         if (due > 4) { ticks_late += (uint16_t)(due - 4) >> 1; due = 4; }
+        stepped = 0;
         while (due >= 2) {
             due -= 2;
             if (mode != M_OVER) tick(held, edge);
             ++ticks;
             edge = 0;
+            stepped = 1;
         }
-        draw_flippers();
-        draw_balls();
+        /* the ball and the flippers move only when the physics steps: no
+           need to draw them again in between (the time goes to the steps) */
+        if (stepped) {
+            draw_flippers();
+            draw_balls();
+        }
         if ((blink_t & 3) == 0) draw_lamps();     /* the lamps every 4th frame, the display every 8th */
         if ((blink_t & 7) == 2) draw_dmd();
     }

@@ -90,7 +90,7 @@ void pb_bot(const Game *g, PbInput *in, Bot *bot)
         const Ball *b = &g->w.balls[i];
         int16_t avy;
         if (b->state == BS_LANE) {
-            if (++bot->launch > PB_MS(800)) { in->pull_to = 800 + (int16_t)(a3_rand(rng) % 200); bot->launch = 0; }
+            if (++bot->launch > PB_MS(800)) { in->pull_to = 800 + (int16_t)((uint16_t)a3_rand(rng) % 200); bot->launch = 0; }
             continue;
         }
         if (b->state != BS_PLAY || b->vy >= V_MM(-60)) continue;     /* port: the cheap test first */
@@ -104,7 +104,7 @@ void pb_bot(const Game *g, PbInput *in, Bot *bot)
             /* coming down within reach: flip, with a little randomness in the timing
                (port: in P and V; |vy| / 20 mm is |vy|_V / 5 P) */
             if (ABS16(dx) < ((f->d.len * 3) >> 2) + PB_R && dy > 0 && dy < P_MM(40) + avy) {
-                if (a3_rand(rng) % 4) hold[f->d.side] = PB_MS(250);
+                if ((uint16_t)a3_rand(rng) % 4) hold[f->d.side] = PB_MS(250);
             }
         }
     }

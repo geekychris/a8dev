@@ -101,6 +101,9 @@ tcom:   sta     t_a
         tramp   _pb_live_balls,     1, _b1_live_balls
         tramp   _pb_say,            1, _b1_say
 
+.ifdef FLIPCHECK
+        tramp   _flip_ref,          $FF, _c_flip_ref
+.endif
 .ifdef SEGCHECK
         tramp   _seg_ref,           $FF, _c_seg_ref
         tramp   _seg_mismatch,      $FF, _c_seg_mismatch

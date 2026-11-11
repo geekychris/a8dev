@@ -12,7 +12,7 @@
 ; The ROM font is copied to $B800 first (text rows: CHBAS $B8). RESET on
 ; an XL/XE resets the MMU, so the OS comes back and boots as usual.
 
-        .export _os_off, _os_vbi_exit, _in_latch, _take_latch, _in_held
+        .export os_vbi, _os_off, _os_vbi_exit, _in_latch, _take_latch, _in_held
         .import __TABRO_LOAD__, __TABRO_RUN__, __TABRO_SIZE__, __TABDATA_SIZE__
         .import __HICODE_LOAD__, __HICODE_RUN__, __HICODE_SIZE__
         .import __HIRAM1_START__
@@ -70,9 +70,9 @@ stick_in:
 .segment "HICODE"                       ; (under the ROM: they run only with it off)
 
 nmi:    bit     NMIST
-        bpl     @vbi
+        bpl     os_vbi
         jmp     (VDSLST)
-@vbi:   sta     NMIRES
+os_vbi: sta     NMIRES
         pha
         txa
         pha

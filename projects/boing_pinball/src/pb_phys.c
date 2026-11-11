@@ -58,7 +58,7 @@ static int16_t hit_segment(Ball *b, const Seg *s)
         int16_t ra, rc;
         memcpy(&bc, b, sizeof bc);
         ra = seg_fast(&bc, s);
-        if (ra != (int16_t)0x8000) {
+        if (ra != (int16_t)0x8000 && ra != -1) {     /* (-1 may be its quick miss past an end) */
             rc = seg_ref(b, s);
             if (ra != rc || memcmp(&bc, b, sizeof bc)) seg_mismatch(&bc, b, ra, rc);
             return rc;
@@ -124,53 +124,29 @@ void pb_flipper_tip(const Flipper *f, int16_t *x, int16_t *y)
 }
 
 /* Ball against a (moving) flipper, a tapered capsule; the surface's
- * velocity at the contact is w x r. */
+ * velocity at the contact is w x r. port: physasm.s's flip_fast does this
+ * in assembly, step for step; the C stays for make FLIPCHECK=1, which runs
+ * both and logs any difference. */
+extern int16_t __fastcall__ flip_fast(Ball *b, const Flipper *f);
+#ifdef FLIPCHECK
+#include "a8log.h"
+extern int16_t flip_ref(Ball *b, const Flipper *f);     /* flipcheck.c, main memory (banks.s) */
 static int16_t hit_flipper(Ball *b, const Flipper *f)
 {
-    int16_t tx, ty, ex, ey, t, qx, qy, rad, dx, dy, rr, d, nx, ny, cx, cy, vcx, vcy, rvx, rvy, vn;
-    int32_t num, den;
-    pb_flipper_tip(f, &tx, &ty);
-    ex = tx - f->d.px; ey = ty - f->d.py;
-    num = mul16(b->x - f->d.px, ex) + mul16(b->y - f->d.py, ey);
-    den = mul16(f->d.len, f->d.len);
-    /* t = clamp(num / den, 0, 1), Q14 (port: no 64-bit division; maths.s's
-       32 / 16 division) */
-    t = num <= 0 ? 0 : num >= den ? 16384 : (int16_t)udiv32_16((uint32_t)num << 8, (uint16_t)(den >> 6));
-    qx = f->d.px + mulq14(t, ex);
-    qy = f->d.py + mulq14(t, ey);
-    rad = f->d.r1 + mulq14(f->d.r2 - f->d.r1, t);
-    dx = b->x - qx; dy = b->y - qy;
-    rr = PB_R + rad;
-    if (ABS16(dx) >= rr || ABS16(dy) >= rr) return -1;
-    {
-        uint32_t d2 = (uint32_t)(mul16(dx, dx) + mul16(dy, dy));
-        if (d2 >= (uint32_t)mul16(rr, rr)) return -1;
-        d = (int16_t)isqrt32(d2);
-    }
-    if (d < 1) {                        /* dead centre: out on the side the flipper moves towards */
-        nx = -div_q14(ey, f->d.len); ny = div_q14(ex, f->d.len);
-        if (f->w < 0) { nx = -nx; ny = -ny; }
-    } else unit(dx, dy, d, &nx, &ny);
-    cx = qx + mulq14(nx, rad);
-    cy = qy + mulq14(ny, rad);
-    /* the contact point's velocity: W/256 rad/s x P/16 mm = mm/s, x4 for V */
-    vcx = -(int16_t)(mul16(f->w, cy - f->d.py) >> 10);
-    vcy = (int16_t)(mul16(f->w, cx - f->d.px) >> 10);
-    place(b, qx + mulq14(nx, rr), qy + mulq14(ny, rr));
-    rvx = sat16((int32_t)b->vx - vcx); rvy = sat16((int32_t)b->vy - vcy);
-    vn = (int16_t)((mul16(rvx, nx) + mul16(rvy, ny)) >> 14);
-    if (vn < 0) {
-        int16_t e = ABS16(f->w) > 256 ? 141 : 77;          /* 0.55 : 0.3 */
-        int8_t slow = -vn < SLOW;
-        int16_t ee = slow ? 0 : e, k = slow ? 256 : 248, en = mulq8(ee, vn);   /* 0.97 */
-        int16_t sx = rvx - mulq14(vn, nx), sy = rvy - mulq14(vn, ny);
-        b->vx = sat16((int32_t)vcx + mulq8(sx, k) - mulq14(en, nx));
-        b->vy = sat16((int32_t)vcy + mulq8(sy, k) - mulq14(en, ny));
-        return -vn;
-    }
-    return 0;
+    static Ball bc;
+    static uint8_t told;
+    int16_t ra, rc;
+    memcpy(&bc, b, sizeof bc);
+    ra = flip_fast(&bc, f);
+    rc = flip_ref(b, f);
+    if ((ra != rc || memcmp(&bc, b, sizeof bc)) && told++ < 4)
+        a8_log("flipcheck: r %d/%d x %d/%d y %d/%d vx %d/%d vy %d/%d\n", ra, rc, bc.x, b->x, bc.y, b->y,
+               bc.vx, b->vx, bc.vy, b->vy);
+    return rc;
 }
-
+#else
+#define hit_flipper(b, f) flip_fast(b, f)
+#endif
 
 /* Did the move p0 -> p1 cross the sensor line? +1 / -1 (the side crossed
  * to), or 0. */
@@ -260,7 +236,7 @@ int16_t sub_kpos;                       /* also zmath.asm's advance() */
 static int16_t sub_acc_up, sub_acc_down, sub_kang;
 static uint8_t sub_n1;
 
-static void flipper_step(World *w, Flipper *f)
+void flipper_step(World *w, Flipper *f)    /* (physasm.s's substeps calls it) */
 {
     int8_t want = f->held && w->flipper_power;
     if (f->w == 0 && f->ang == (want ? f->d.up : f->d.rest)) return;   /* port: at rest, first */
@@ -424,15 +400,17 @@ void mb_tail(World *w, Ball *b)
 }
 
 extern void __fastcall__ move_ball(World *w, Ball *b, int16_t grav);   /* physasm.s */
+extern void substeps(void);             /* physasm.s */
+extern World *sub_w;
+extern uint8_t sub_n, sub_gr, sub_nfl, sub_nb;
+extern int16_t sub_gq;
+extern Flipper *sub_fl[PB_MAX_FLIP];
+extern Ball *sub_bl[PB_MAX_BALLS];
 
 /* One fixed step (1/120 s), split into substeps (see pb.h). */
 /* port: |v| / 625, truncated, without a division: (|v| * 13422) >> 23 is
    exact for |v| < 32768 */
-static int16_t div625(int16_t v)
-{
-    int16_t q = (int16_t)(mulu16((uint16_t)ABS16(v), 13422) >> 23);
-    return v < 0 ? -q : q;
-}
+extern int16_t __fastcall__ div625(int16_t v);  /* physasm.s: the same, in assembly */
 
 void pb_world_step(World *w)
 {
@@ -456,12 +434,14 @@ void pb_world_step(World *w)
             if ((int16_t)s > fast) fast = (int16_t)s;
         }
     }
+    sub_nfl = 0;
     for (i = 0, f = w->flip; i < nf; i++, f++)
         if (flipper_moving(w, f)) {
             /* port: the tip's speed counts only when a ball could reach the
                flipper this step (at most 7000 mm/s x 1/25 s = 280 mm, 4480 P,
                beyond its reach): far from the balls a flip costs no substeps */
             int16_t reach = f->d.len + f->d.r1 + PB_R + 4480;
+            sub_fl[sub_nfl++] = f;       /* at rest now, at rest all step: substeps() leaves it out */
             for (j = 0, b = w->balls; j < nb; j++, b++)
                 if (b->state == BS_PLAY && ABS16(b->x - f->d.px) < reach && ABS16(b->y - f->d.py) < reach) break;
             if (j < nb) {
@@ -487,16 +467,17 @@ void pb_world_step(World *w)
     gq = sub_tab[n][4];                                    /* gravity a substep: PB_GRAVITY_STEP / n */
     gr = sub_tab[n][5];                                    /*   and the remainder */
     if (mb_t != w->t) pb_mb_prepare(w);                   /* port: bank 2 */
-    for (k = 0; k < n; k++) {
-        int16_t grav = gq + (done < gr);                  /* port: adds up to the step's, no divide */
-        done++;
-        for (i = 0, f = w->flip; i < nf; i++, f++) flipper_step(w, f);
-        for (i = 0, b = w->balls; i < nb; i++, b++) if (b->state == BS_PLAY) move_ball(w, b, grav);
-        if (nb > 1)
-            for (i = 0, b = w->balls; i < nb; i++, b++)
-                for (j = i + 1, b2 = b + 1; j < nb; j++, b2++)
-                    if (b->state == BS_PLAY && b2->state == BS_PLAY) pb_hit_balls(b, b2);   /* port: bank 2 */
-    }
+    /* port: the substeps in physasm.s (substeps()): for each, the moving
+       flippers' flipper_step, move_ball for each ball in play with gravity
+       gq (+ 1 for the first gr: adds up to the step's, no divide), the
+       balls against each other (pb_hit_balls, bank 2) */
+    sub_w = w;
+    sub_n = (uint8_t)n;
+    sub_gq = gq;
+    sub_gr = (uint8_t)gr;
+    sub_nb = (uint8_t)nb;
+    for (i = 0, b = w->balls; i < nb; i++, b++) sub_bl[i] = b;
+    substeps();
     for (i = 0, b = w->balls; i < nb; i++, b++) {
         if (b->state == BS_RAMP) pb_ramp_step(w, b);    /* port: bank 2 (pb_phys2.c) */
         else if (b->state == BS_SAUCER) { b->hold--; b->vx = b->vy = 0; }
