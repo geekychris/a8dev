@@ -61,6 +61,8 @@ void think(uint8_t k)
     if (speed > 0 && td_blocked(t->x + td_scale8(U(70), td_sin8(t->yaw)), t->z + td_scale8(U(70), td_cos8(t->yaw)), TD_TANK_R))
         want = t->yaw + t->orbit * 0x2000;
     A1(2); A0();
+    t->want = want;
+    t->speed = speed;
     drive(t, want, speed);
     A1(3);
 }

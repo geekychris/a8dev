@@ -4,8 +4,8 @@
  * nothing).
  *
  * The radar turns with the tank (ahead is up): 32 scan lines high, 16
- * pixels wide (players 2 and 3, double width, at the same place): 160
- * units a bit across, 80 a line (the whole arena from its middle). Player 2 is its frame and the tank's mark,
+ * pixels wide (players 2 and 3, double width: 8 bits of 2 pixels, at the
+ * same place): 500 units a bit across, 80 a line. Player 2 is its frame and the tank's mark,
  * player 3 the enemies' blips, missile 3 (player 3's colour, flashing) the
  * mortar rounds' landing points. The sight: missile 0 above the view's centre.
  */
@@ -76,9 +76,9 @@ void radar_update(void)
         rot2();
         rx = r_cx;                          /* across */
         rz = r_cz;                          /* ahead */
-        rx = rx / 160 + 8;
+        rx = (rx + 2000) / 500;             /* 8 bits across: 0..7 */
         rz = 16 - rz / 80;
-        if (rx < 1 || rx > 14 || rz < 1 || rz > 30) continue;
+        if (rx < 1 || rx > 6 || rz < 1 || rz > 30) continue;
         col = (uint8_t)rx;
         row = (uint8_t)rz;
         b[row] |= (uint8_t)(0x80 >> col);
@@ -90,9 +90,9 @@ void radar_update(void)
         dz = UNITS(m->tz - p->z);
         r_dx = dx; r_dz = dz; r_cs = s; r_cc = c;
         rot2();
-        rx = r_cx / 160 + 8;
+        rx = (r_cx + 2000) / 500;
         rz = 16 - r_cz / 80;
-        if (rx < 1 || rx > 14 || rz < 1 || rz > 30) continue;
+        if (rx < 1 || rx > 6 || rz < 1 || rz > 30) continue;
         MIS[RTOP + rz] |= 0xC0;
         (&HPOSM0)[3] = (uint8_t)(RX + rx * 2);
     }

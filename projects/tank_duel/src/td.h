@@ -76,6 +76,8 @@ typedef struct {
     int8_t reload, orbit;               /* orbit: which way a scout circles */
     uint8_t ai_a, ai_b;                 /* port: the mind's clocks, 0..59 and 0..199 (no divisions) */
     uint8_t held;                       /* a practice target: doesn't move or shoot */
+    uint16_t want;                      /* port: the mind's last heading and speed (it */
+    pos speed;                          /*   thinks every other tick) */
 } Tank;
 
 typedef struct {

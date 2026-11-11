@@ -517,7 +517,17 @@ void td_tick(uint8_t in)
     if (in & TD_IN_FIRE) td_fire(0);
     T1(0); T0();
     /* the enemies */
-    for (k = 1; k < G.ntanks; k++) if (G.tk[k].alive && !G.tk[k].held) think(k);
+    /* port: each enemy thinks every other tick (half of them a tick) and
+       drives on its last decision in between */
+    for (k = 1; k < G.ntanks; k++) {
+        Tank *t = &G.tk[k];
+        if (!t->alive || t->held) continue;
+        if (((k + G.tick) & 1) || !t->want) think(k);
+        else {
+            if (t->reload > 0) t->reload--;
+            drive(t, t->want, t->speed);
+        }
+    }
     T1(1); T0();
     tanks_apart();
     T1(2); T0();

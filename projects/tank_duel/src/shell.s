@@ -7,7 +7,7 @@
 ;
 ;   uint8_t shell_fly(void)   the steps made; fly_hit = 1 if it stopped early
 ;
-; Shell: alive, owner, bounces, life, x, z, dx, dz (td.h). Tank (16 bytes,
+; Shell: alive, owner, bounces, life, x, z, dx, dz (td.h). Tank (20 bytes,
 ; G.tk at G + 12): x at +3, z at +5.
 
         .macpack longbranch
@@ -197,7 +197,7 @@ _shell_fly:
         beq     @next
         clc
         lda     tp
-        adc     #16
+        adc     #20                 ; (sizeof Tank)
         sta     tp
         bcc     @tk
         inc     tp+1
