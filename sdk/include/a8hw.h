@@ -12,7 +12,7 @@
 
 /* SDK version (sdk/README.md has the changelog and the compatibility rule):
    major * 10000 + minor * 100 + patch. Check with #if A8_SDK_VERSION >= ... */
-#define A8_SDK_VERSION 10000      /* 1.0.0 */
+#define A8_SDK_VERSION 10100      /* 1.1.0 */
 
 #define A8_REG(a)    (*(volatile uint8_t *)(a))
 #define A8_REG16(a)  (*(volatile uint16_t *)(a))
