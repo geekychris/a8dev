@@ -1,6 +1,6 @@
 # The a8dev SDK
 
-`sdk/` is a C library for Atari 8-bit games, built with cc65 (target
+`sdk/` (version `A8_SDK_VERSION`, sdk/README.md) is a C library for Atari 8-bit games, built with cc65 (target
 `atari`: the OS ROM stays in, so one XEX runs on a 48K 400/800 and on
 XL/XE/130XE machines). Every project links `build/a8sdk.lib`, so a program
 only carries the modules it calls.
