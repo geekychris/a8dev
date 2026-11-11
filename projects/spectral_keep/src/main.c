@@ -10,6 +10,7 @@
 #include "a8log.h"
 #include "keep.h"
 #include "sndreq.h"
+#include "view.h"
 
 void os_off(void);
 uint8_t take_latch(void);
@@ -38,12 +39,14 @@ static uint16_t frames16(void)
 int main(void)
 {
     uint8_t i, ok = 1, st = 0xFF;
-    uint16_t t0, steps = 0, busy = 0;
+    uint16_t t0, t1, steps = 0, busy = 0, vbusy = 0;
     os_off();
     for (i = 0; i < 4; ++i) ok &= bank_ok(i);
     a8_log("sk: banks ok=%u\n", ok);
+    view_init();
     game_init();
     probe_update();
+    view_step();
     a8_log("sk: ready\n");
     for (;;) {
         uint8_t pressed;
@@ -51,10 +54,13 @@ int main(void)
         pressed = take_latch();
         game_step(pad_of(in_held), pad_of(pressed));
         probe_update();
+        t1 = frames16();
+        view_step();
+        vbusy += frames16() - t1;
         busy += frames16() - t0;
         if (++steps == 50) {
-            a8_log("sk: perf steps=50 frames=%u\n", busy);
-            steps = busy = 0;
+            a8_log("sk: perf steps=50 frames=%u view=%u room=%s\n", busy, vbusy, R.room->id);
+            steps = busy = vbusy = 0;
         }
         if (G.state != st) { st = G.state; }
         while ((uint16_t)(frames16() - t0) < 4) ;

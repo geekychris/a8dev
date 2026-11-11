@@ -74,5 +74,13 @@ selstop:
         sig     3
 .segment "XEND"
         ini     selmain
+.import __XC1_START__, __XC1_LAST__, __XC2_START__, __XC2_LAST__
+.segment "XC1HDR"
+        chunk   __XC1_START__, __XC1_LAST__ - 1
+.segment "XC2HDR"
+        chunk   __XC2_START__, __XC2_LAST__ - 1
+.import __XC3_START__, __XC3_LAST__
+.segment "XC3HDR"
+        chunk   __XC3_START__, __XC3_LAST__ - 1
 .segment "MAIN2HDR"
         chunk   __MAIN2_START__, __FRONTBSS_RUN__ - 1     ; (the BSS isn't in the file)
