@@ -1,0 +1,7 @@
+{
+  "title": "Miner Meteor",
+  "ready": "miner: ready",
+  "description": "Six caverns of keys, spikes, belts and crumbling floors: get every key out before the air runs out.",
+  "controls": "Joystick walks, FIRE or UP jumps",
+  "picture": "screenshots/play.png"
+}

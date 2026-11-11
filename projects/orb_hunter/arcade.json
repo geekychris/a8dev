@@ -1,0 +1,7 @@
+{
+  "title": "Orb Hunter",
+  "ready": "orb: ready",
+  "description": "Explore 48 caverns of rock, magma and metal, shoot their creatures, find nine power-ups.",
+  "controls": "Stick run/jump, FIRE shoot, DOWN roll",
+  "picture": "screenshots/play.png"
+}

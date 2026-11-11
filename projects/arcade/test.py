@@ -38,8 +38,20 @@ with Emulator() as emu:
     check("banktest from the disk (LOWRAM next to the loader)",
           arcade.menu_choose(emu, bank, len(gs), sel=sel) and emu.run_until("A8:DONE", 3000))
     emu.reset(hard=False)
-    check("RESET after banktest returns to the menu (loader at $0700-$0BFF intact)",
-          arcade.menu_ready(emu, 3000) is not None)
+    sel = arcade.menu_ready(emu, 3000)
+    check("RESET after banktest returns to the menu (loader at $0700-$0BFF intact)", sel is not None)
+    # every game starts from the menu, and RESET brings the menu back
+    bad = []
+    for g in gs:
+        if sel is None:
+            bad.append(f"{g['project']}: no menu")
+            break
+        if not arcade.menu_choose(emu, g, len(gs), sel=sel, max_frames=6000):
+            bad.append(g["project"])
+        emu.run(5)
+        emu.reset(hard=False)
+        sel = arcade.menu_ready(emu, 3000)
+    check(f"all {len(gs)} games start from the menu and RESET returns", not bad, ", ".join(bad))
     if failures:
         print("\n".join(emu.debug_log[-15:]))
 

@@ -6,7 +6,7 @@ fires, dodging bullets that are about to hit; once wave 2 has started it
 stops dodging, so lives are lost and the game ends. It enters BOT in the
 high-score table and returns to the title. The game is recorded and
 replayed twice (every frame hash must match); a 64K 800XL runs it too.
-Screenshots and the GIF go to screenshots/.
+Screenshots and the GIF go to screenshots/ with --shots (build/shots otherwise).
 """
 import re
 import struct
@@ -20,7 +20,10 @@ from a8dev.emu import Emulator  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 PROG = HERE / "build" / "nova_defense.xex"
-SHOTS = HERE / "screenshots"
+# the README's pictures are written with --shots; a plain run (selftest)
+# leaves them alone and writes its pictures under build/
+SHOTS = HERE / "screenshots" if "--shots" in sys.argv else HERE / "build" / "shots"
+SHOTS.mkdir(parents=True, exist_ok=True)
 REC = HERE / "build" / "bot-game.json"
 failures = []
 DEBUG = "--debug" in sys.argv

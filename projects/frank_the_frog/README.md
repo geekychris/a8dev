@@ -94,8 +94,8 @@ road, rides the logs and fills all four ponds (level 2), then plays
 carelessly until the game is over; it enters BOT in the high-score table
 and returns to the title. The game is recorded and replayed twice with
 every frame hash checked, and the XEX boots on a 64K 800XL. `--debug`
-prints the bot's last moves before each death. The test writes the
-screenshots and the GIF in `screenshots/`.
+prints the bot's last moves before each death. `.venv/bin/python
+projects/frank_the_frog/test.py --shots` rewrites the screenshots and the GIF.
 
 ## Not done
 
