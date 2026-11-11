@@ -26,6 +26,7 @@ and demo (three spinning shaded cubes, wireframe on FIRE).
 | Clipping | x by clamping each edge per line (exact for convex polygons); y in the edge walker (an edge from above line 0 is advanced by slope x the lines skipped, long edges get their slope by a 24/16 divide); the near plane in camera space (C) | `a3d_poly.s`, `a3d_near.c` |
 | Lines | Bresenham with incremental pointer and mask; Cohen-Sutherland clip in C (edges and outlines of transformed vertices apart, in `a3d_edge.c`) | `a3d_line.s`, `a3d_line.c`, `a3d_edge.c` |
 | Clearing | rows: one pass of X over all pages with a store per page (5 cycles a byte); or the "dirty" rectangle each buffer recorded | `a3d_span.s` |
+| Upright objects | `a3d_prism` (a box turned about the vertical), `a3d_pyramid`, `a3d_wallquad` (an upright quad between two floor points): one asm call each from the `a3d_pr_*` fields; the footprint turned by six 8 x 8 products, projected once, the sides seen (corners left to right on the screen) and the top (below the eye) filled in their shades; 1 back when a corner is nearer than the near plane. Bench `prism_box`: 33.5K cycles for an 80-unit box with two sides seen (10K of it outside the fill), against ~60K by `a3d_xform` + `a3d_face` | `a3d_prism.s` |
 | Maths helpers | `a3d_muldiv` (16 x 16 / 16 in asm), `a3d_mulf` (16 x 16 >> 8) | `a3d_mul.s` |
 | Low RAM | with `-DA3D_LOWTAB` (C and asm flags) the tables and work arrays go in the SDK's `LOWRAM` ($0C00-$1FFF) | (lander_3d) |
 
