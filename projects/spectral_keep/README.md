@@ -64,6 +64,12 @@ make -C projects/spectral_keep build/host/sim && python3 projects/spectral_keep/
 - **Characters are single-colour players**, except the explorer, which is two
   overlapped players in three greys. A room has at most two other characters,
   as players 2 and 3, in their original colours.
+  No multiplexing is needed. A census of all 24 rooms (`room_build` on the
+  host) finds at most two characters besides the explorer in any room, sages
+  included: the tomb has two ghosts, the belfry two bouncers, and the
+  bonepit, kitchen, gallery, observatory and crossing two of different kinds.
+  view.c gives players 2 and 3 to the first two characters it finds and
+  would leave out any more.
 - **Nothing hides behind scenery.** Everything moving is drawn in front of the
   room (players, and crates, lifts and pickups drawn into the bitmap). Pillars
   and the front arches don't cover the explorer.
