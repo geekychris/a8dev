@@ -1,0 +1,7 @@
+{
+  "title": "Rolling Steel",
+  "ready": "rs: ready",
+  "description": "Roll a steel marble down six floating courses against one clock: ice, sand, acid, chasers.",
+  "controls": "Stick roll, FIRE start, up/down course, B autopilot",
+  "picture": "screenshots/play.png"
+}
