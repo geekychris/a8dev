@@ -1,0 +1,7 @@
+{
+  "title": "Tank Duel",
+  "ready": "td: ready",
+  "description": "A tank fight in a walled arena from the turret: scouts snipe, mortars lob, bulwarks wear a shield.",
+  "controls": "Stick drive, FIRE shoot, OPTION pause, SELECT autopilot",
+  "picture": "screenshots/play.png"
+}
