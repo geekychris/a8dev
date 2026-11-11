@@ -11,6 +11,8 @@
 #pragma static-locals (on)
 
 /* ---------- the enemies ---------- */
+/* port: in asm on the Atari (think.s) */
+#ifdef HOST
 #ifdef TT
 extern uint16_t tt_ai[4];
 extern uint16_t a3d_ticks(void);
@@ -66,6 +68,7 @@ void think(uint8_t k)
     drive(t, want, speed);
     A1(3);
 }
+#endif
 
 /* ---------- the autopilot ---------- */
 uint8_t td_bot(void)

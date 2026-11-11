@@ -15,7 +15,9 @@
 TDGame G;
 #pragma bss-name (pop)
 #ifdef TT
-uint16_t tt_part[6], tt0, tt_ai[4];
+#pragma bss-name (push, "LOWRAM")
+uint16_t tt_part[6], tt0, tt_ai[4], tt_n;     /* (read by the emulator) */
+#pragma bss-name (pop)
 extern uint16_t a3d_ticks(void);
 extern uint16_t a3d_since(uint16_t t0);
 #endif
@@ -213,6 +215,7 @@ extern int16_t __fastcall__ a3d_muldiv_(int16_t c);
 #define along(v, reach, d) (a3d_mda = (v), a3d_mdb = (reach), a3d_muldiv_((int16_t)(d)))
 #endif
 
+#ifdef HOST
 void push_out(Tank *t)
 {
     uint8_t k;
@@ -248,13 +251,17 @@ void push_out(Tank *t)
     if (t->z > lim) t->z = lim;
     if (t->z < -lim) t->z = -lim;
 }
+#endif
 
+#ifdef HOST
+static uint8_t apart_moved;
 static void tanks_apart(void)
 {
     uint8_t i, j;
     Tank *a, *b;
     pos dx, dz, push;
     uint16_t d;
+    apart_moved = 0;
     for (i = 0, a = G.tk; i < G.ntanks; i++, a++) {
         if (!a->alive) continue;
         for (j = i + 1, b = a + 1; j < G.ntanks; j++, b++) {
@@ -269,9 +276,15 @@ static void tanks_apart(void)
             dz = along(dz, push, d);
             a->x -= dx; a->z -= dz;
             b->x += dx; b->z += dz;
+            apart_moved |= (uint8_t)((1 << i) | (1 << j));
         }
     }
 }
+#else
+void tanks_apart(void);                 /* apart.s */
+extern uint8_t apart_moved;
+void __fastcall__ minds_(uint8_t tick);
+#endif
 
 /* turn towards heading `want` and drive at `speed` (negative: back);
    port: in asm (drive.s) on the Atari */
@@ -511,6 +524,7 @@ void td_tick(uint8_t in)
 #ifdef TT
 #define T0() tt0 = a3d_ticks()
 #define T1(n) tt_part[n] += a3d_since(tt0)
+    ++tt_n;
     T0();
 #else
 #define T0()
@@ -527,6 +541,7 @@ void td_tick(uint8_t in)
     /* port: each enemy thinks every other tick (half of them a tick), every
        fourth with more than 3 enemies, and drives on its last decision in
        between */
+#ifdef HOST
     for (k = 1; k < G.ntanks; k++) {
         Tank *t = &G.tk[k];
         if (!t->alive || t->held) continue;
@@ -536,10 +551,14 @@ void td_tick(uint8_t in)
             drive(t, t->want, t->speed);
         }
     }
+#else
+    minds_((uint8_t)G.tick);            /* (apart.s) */
+#endif
     T1(1); T0();
     tanks_apart();
     T1(2); T0();
-    for (k = 0; k < G.ntanks; k++) if (G.tk[k].alive) push_out_fast(&G.tk[k]);
+    /* port: again only for the tanks pushed apart (drive pushed each out) */
+    for (k = 0; k < G.ntanks; k++) if (G.tk[k].alive && (apart_moved & (1 << k))) push_out_fast(&G.tk[k]);
     T1(3); T0();
     shells();
     T1(4); T0();
