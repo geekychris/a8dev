@@ -33,7 +33,7 @@ and demo (three spinning shaded cubes, wireframe on FIRE).
 ```make
 NAME   := mygame
 A8_SDK ?= ../../sdk
-include ../a8_3d/a3d.mk          # builds build/a3d.lib: only what you call is linked
+include ../a8_3d/a3d.mk          # builds build/obj/a3d/a3d.lib: only what you call is linked
 include $(A8_SDK)/project.mk
 ```
 

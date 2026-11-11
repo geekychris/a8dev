@@ -5,12 +5,12 @@
 #   include ../a8_3d/a3d.mk
 #   include $(A8_SDK)/project.mk
 #
-# It builds projects/a8_3d/lib/*.c *.s into build/a3d.lib (a library: the
+# It builds projects/a8_3d/lib/*.c *.s into build/obj/a3d/a3d.lib (a library: the
 # game links only the modules it uses) with the game's own flags.
 A3D_DIR  := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))/lib
 A3D_SRCS := $(wildcard $(A3D_DIR)/*.c) $(wildcard $(A3D_DIR)/*.s)
 A3D_OBJS := $(patsubst $(A3D_DIR)/%,build/obj/a3d/%.o,$(A3D_SRCS))
-A3D_LIB  := build/a3d.lib
+A3D_LIB  := build/obj/a3d/a3d.lib
 EXTRA_OBJS    += $(A3D_LIB)
 EXTRA_CFLAGS  += -I$(A3D_DIR)
 EXTRA_ASFLAGS += -I$(A3D_DIR)
