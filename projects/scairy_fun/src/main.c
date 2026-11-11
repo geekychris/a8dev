@@ -84,15 +84,26 @@ static void put_centre(uint8_t *d, uint8_t width, const char *s, uint8_t colour)
     put(d + (n < width ? (width - n) >> 1 : 0), s, colour);
 }
 
+extern void __fastcall__ dec7(uint32_t v);       /* (dec.s) 7 ASCII digits into dec_out */
+extern char dec_out[7];
+
+/* the last `digits` digits of v (from dec.s: ~1,500 cycles; 32-bit C: ~5,000) */
 static void put_num(uint8_t *d, uint32_t v, uint8_t digits, uint8_t colour)
 {
-    static const uint32_t p10[6] = { 100000UL, 10000UL, 1000UL, 100UL, 10UL, 1UL };
-    static uint8_t i, c;
-    for (i = 6 - digits; i < 6; ++i) {
-        c = 0x10;
-        while (v >= p10[i]) { v -= p10[i]; ++c; }
-        *d++ = c | colour;
-    }
+    static uint8_t i;
+    dec7(v > 9999999UL ? 9999999UL : v);
+    for (i = 7 - digits; i < 7; ++i) *d++ = (dec_out[i] - '0' + 0x10) | colour;
+}
+
+/* a byte as 3 digits */
+static void put_byte(uint8_t *d, uint8_t v)
+{
+    static uint8_t c;
+    for (c = 0x10; v >= 100; v -= 100) ++c;
+    d[0] = c;
+    for (c = 0x10; v >= 10; v -= 10) ++c;
+    d[1] = c;
+    d[2] = 0x10 + v;
 }
 
 /* ------------------------------------------------------------ sound */
@@ -277,15 +288,18 @@ static void hud(void)
         put_centre(MSG, 40, msg_text[w.msg], 0);
     }
     kmh = KMH(w.car.v);
-    if (w.ai.on != s_ap || kmh != s_kmh) {
+    if (w.ai.on != s_ap) {                   /* (the text only when it changes) */
         s_ap = w.ai.on;
-        s_kmh = kmh;
         memset(MSG + 40, 0, 40);
         put(MSG + 41, w.ai.on ? "AUTOPILOT ON" : "YOU ARE DRIVING", 0);
-        put_num(MSG + 57, (uint32_t)(kmh < 0 ? 0 : kmh), 3, 0);
         put(MSG + 61, "KM/H", 0);
         put(MSG + 67, route_info[w.route].ai_name, 0);
         MSG[66] = scode('V');
+        s_kmh = -1;
+    }
+    if (kmh != s_kmh) {
+        s_kmh = kmh;
+        put_byte(MSG + 57, kmh < 0 ? 0 : kmh > 255 ? 255 : (uint8_t)kmh);
     }
 }
 
