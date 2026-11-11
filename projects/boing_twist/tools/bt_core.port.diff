@@ -1,0 +1,31 @@
+94c94,98
+<     BtPiece old[BT_MAX_T];
+---
+>     /* port: static (cc65's locals are limited to 256 bytes), in the RAM
+>        under the OS ROM with the game's state (boing_twist.cfg) */
+> #pragma bss-name (push, "HIBSS")
+>     static BtPiece old[BT_MAX_T];
+> #pragma bss-name (pop)
+104c108,109
+<                 BtPiece q = old[b * S + from];
+---
+>                 BtPiece q;                /* port: cc65 can't initialise a struct from an expression */
+>                 q = old[b * S + from];
+187c192,193
+<                 BtPiece q = p->slot[b * S + s];
+---
+>                 BtPiece q;                /* port: as in bt_apply */
+>                 q = p->slot[b * S + s];
+235c241,245
+<     uint32_t sig[BT_MAX_T][2];
+---
+>     /* port: static, as in bt_apply; in the ball's picture buffer, which the
+>        game clears after starting a level */
+> #pragma bss-name (push, "SIGBSS")
+>     static uint32_t sig[BT_MAX_T][2];
+> #pragma bss-name (pop)
+255a266,267
+>     /* port: in the screen area, which the self-test runs before using */
+> #pragma bss-name (push, "VECBSS")
+256a269
+> #pragma bss-name (pop)
