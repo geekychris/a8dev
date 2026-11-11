@@ -1,0 +1,7 @@
+{
+  "title": "Marble Tilt",
+  "ready": "mt: ready",
+  "description": "Tilt a floating maze to roll a marble to the exit past holes, gates, bumpers and sand, against the clock.",
+  "controls": "Stick tilts the board, START pause, B autopilot, ESC title",
+  "picture": "screenshots/gatehouse.png"
+}
