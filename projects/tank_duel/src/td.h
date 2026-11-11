@@ -16,10 +16,10 @@
  *  - a tick is 80 ms, two of the original's: speeds, turns and shell
  *    steps are doubled, the timers count half as many ticks; the rules run
  *    12.5 times a second;
- *  - sines are Q14 from a 256-step table, lengths are alpha-max-beta-min
+ *  - sines are Q8 from a 256-step table, lengths are alpha-max-beta-min
  *    (within 4%), so a fight goes as the original's but not bit for bit.
- * tools/compare.py plays the autopilot on both, on the host, over many
- * seeds and compares rounds, kills and scores.
+ * tools/run_orig.c and tools/run_port.c play the autopilot on both, on the
+ * host, over 20 seeds, to compare rounds, kills and scores.
  */
 #ifndef TD_GAME_H
 #define TD_GAME_H
@@ -121,7 +121,7 @@ uint16_t td_angle_to(pos dx, pos dz);   /* the heading towards (dx, dz) */
 uint8_t td_blocked(pos x, pos z, uint8_t r);   /* inside an obstacle or a wall? */
 uint8_t td_fire(uint8_t tank);          /* 1 if a shell went */
 
-/* maths (td_fix.c): Q14 sine, the angle of a vector, a length */
+/* maths (td_fix.c, atan.s, fast.s): the angle of a vector, a length */
 uint16_t td_atan2(pos x, pos z);        /* the angle of (x, z) from +z towards +x */
 uint16_t td_len(pos x, pos z);          /* |(x, z)| within 4% */
 #ifndef HOST                            /* port: straight to the asm (atan.s, fast.s) */
