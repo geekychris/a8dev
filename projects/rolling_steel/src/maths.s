@@ -602,3 +602,185 @@ _hud_time:
         adc     #5
         ldx     #0
         rts
+
+; uint8_t __fastcall__ acid_at(uint16_t x, int16_t y, uint16_t z): is the
+; point in an acid pool (a BOX_ACID trigger box: y within y0..y1, z's
+; grid row within its rows, x within the row's x0..x1)? (main.c's autopilot)
+        .export _acid_at
+        .import _boxes, popax
+.segment "BSS"
+az:     .res 2
+ay:     .res 2
+ax:     .res 2
+ak:     .res 2
+anb:    .res 1
+.segment "CODE"
+_acid_at:
+        sta     az              ; k = z >> 7
+        stx     az+1
+        asl
+        txa
+        rol
+        sta     ak
+        lda     #0
+        rol
+        sta     ak+1
+        jsr     popax
+        sta     ay
+        stx     ay+1
+        jsr     popax
+        sta     ax
+        stx     ax+1
+        lda     _boxes
+        sta     ptr1
+        lda     _boxes+1
+        sta     ptr1+1
+        lda     _meta+21        ; MetaHdr.nbox
+        sta     anb
+@box:   lda     anb
+        bne     @b1
+        lda     #0
+        tax
+        rts
+@b1:    dec     anb
+        ldy     #0              ; kind: BOX_ACID = 0
+        lda     (ptr1),y
+        bne     @next
+        ldy     #4              ; y >= y0 (signed)
+        lda     ay
+        cmp     (ptr1),y
+        iny
+        lda     ay+1
+        sbc     (ptr1),y
+        bvc     @v1
+        eor     #$80
+@v1:    bmi     @next
+        ldy     #6              ; y <= y1: y1 - y >= 0
+        lda     (ptr1),y
+        cmp     ay
+        iny
+        lda     (ptr1),y
+        sbc     ay+1
+        bvc     @v2
+        eor     #$80
+@v2:    bmi     @next
+        ldy     #2              ; r = k - k0 (unsigned), r < nrows
+        lda     ak
+        sec
+        sbc     (ptr1),y
+        sta     tmp1
+        iny
+        lda     ak+1
+        sbc     (ptr1),y
+        bcc     @next           ; k < k0
+        bne     @next
+        ldy     #1
+        lda     tmp1
+        cmp     (ptr1),y
+        bcs     @next
+        ; the row: ptr1 + 10 + 4 r: x0 <= x <= x1
+        asl
+        asl                     ; (nrows < 64)
+        clc
+        adc     #10
+        tay
+        lda     ax
+        cmp     (ptr1),y
+        iny
+        lda     ax+1
+        sbc     (ptr1),y
+        bcc     @next
+        iny
+        lda     (ptr1),y        ; x1 - x >= 0
+        cmp     ax
+        iny
+        lda     (ptr1),y
+        sbc     ax+1
+        bcc     @next
+        lda     #1
+        ldx     #0
+        rts
+@next:  ldy     #1              ; ptr1 += 10 + 4 nrows
+        lda     (ptr1),y
+        asl
+        asl
+        clc
+        adc     #10
+        bcc     @n1
+        inc     ptr1+1
+        clc
+@n1:    adc     ptr1
+        sta     ptr1
+        bcc     @nb
+        inc     ptr1+1
+@nb:    jmp     @box
+
+; uint16_t __fastcall__ speed_of(int16_t vx, int16_t vz): |v| from above,
+; the octagon: max + min / 4 + min / 8 (phys.c's, in assembly)
+        .export _speed_of
+.segment "BSS"
+so_a:   .res 2
+so_b:   .res 2
+.segment "CODE"
+_speed_of:
+        jsr     soabs           ; vz -> so_b
+        sta     so_b
+        stx     so_b+1
+        jsr     popax
+        jsr     soabs
+        cmp     so_b            ; |vx| < |vz|: swap
+        pha
+        txa
+        sbc     so_b+1
+        bcs     @ok
+        pla                     ; a = so_b, b = |vx|
+        ldy     so_b
+        sta     so_b
+        tya
+        pha
+        lda     so_b+1
+        stx     so_b+1
+        tax
+@ok:    pla
+        sta     so_a
+        stx     so_a+1
+        lda     so_b+1          ; b >> 2
+        lsr
+        sta     tmp2
+        lda     so_b
+        ror
+        lsr     tmp2
+        ror
+        sta     tmp1
+        lda     tmp2            ; (b >> 2) >> 1 = b >> 3
+        lsr
+        sta     tmp4
+        lda     tmp1
+        ror
+        clc
+        adc     tmp1
+        sta     tmp3
+        lda     tmp4
+        adc     tmp2
+        tax                     ; X:tmp3 = b/4 + b/8
+        lda     tmp3
+        clc
+        adc     so_a
+        pha
+        txa
+        adc     so_a+1
+        tax
+        pla
+        rts
+soabs:  cpx     #$80
+        bcc     @r
+        eor     #$FF
+        clc
+        adc     #1
+        pha
+        txa
+        eor     #$FF
+        adc     #0
+        tax
+        pla
+@r:     rts

@@ -137,14 +137,22 @@ static uint8_t progress(void)            /* 0..100 along the route */
 
 /* the original's DemoInput: at the next waypoint at a cruise of 8.5 u/s,
    with the stick (digital: the error's sign) */
+uint8_t __fastcall__ acid_at(uint16_t x, int16_t y, uint16_t z);   /* maths.s: in an acid pool? */
+
 static void demo_input(int8_t *jx, int8_t *jz)
 {
     int16_t dx, dz, ex, ez;
+    uint8_t acidn;
     uint16_t l;
+    /* port: with acid within a second of it, the autopilot creeps (2.5 u/s)
+       and keeps to the route (a waypoint is reached at a unit, not two):
+       on the Atari's 2.5D deck it rolled into course 6's last pools */
+    acidn = acid_at(b_x[0] + b_vx[0] * 3, b_y[0], b_z[0] + b_vz[0] * 3) ||
+           acid_at(b_x[0] + b_vx[0] + (b_vx[0] >> 1), b_y[0], b_z[0] + b_vz[0] + (b_vz[0] >> 1));
     while (demo_wp < MH->npath - 1) {
         dx = (int16_t)(path[demo_wp].x - b_x[0]);
         dz = (int16_t)(path[demo_wp].z - b_z[0]);
-        if (speed_of(dx, dz) < 512) ++demo_wp; else break;
+        if (speed_of(dx, dz) < (acidn ? 256 : 512)) ++demo_wp; else break;
     }
     dx = (int16_t)(path[demo_wp].x - b_x[0]);
     dz = (int16_t)(path[demo_wp].z - b_z[0]);
@@ -152,8 +160,11 @@ static void demo_input(int8_t *jx, int8_t *jz)
     *jx = *jz = 0;
     if (l < 8) return;
     while (l > 255) { dx >>= 1; dz >>= 1; l >>= 1; }
-    ex = ((((dx << 7) / (int16_t)l) * 87) >> 4) - b_vx[0];      /* the way, Q7, at 8.5 u/s */
-    ez = ((((dz << 7) / (int16_t)l) * 87) >> 4) - b_vz[0];
+    {   /* the way, Q7, at 8.5 u/s (near acid 2.5) */
+        int16_t k = acidn ? 26 : 87;
+        ex = ((((dx << 7) / (int16_t)l) * k) >> 4) - b_vx[0];
+        ez = ((((dz << 7) / (int16_t)l) * k) >> 4) - b_vz[0];
+    }
     if (ex > 40) *jx = 1; else if (ex < -40) *jx = -1;
     if (ez > 40) *jz = 1; else if (ez < -40) *jz = -1;
 }
@@ -355,14 +366,26 @@ static void kill(const char *why)
 
 static void respawn(void)
 {
+    static uint8_t last_i = 0xFF, again;
     uint8_t i = nearest_pt(lg_x, lg_y, lg_z, 1), k;
     dying = 0;
     if (i != 0xFF)
         for (k = i; k > 0; --k)
             if (path[k - 1].y & 1) { i = k - 1; break; }
+    /* port: the autopilot can't get past everything (course 6's chaser
+       guards the gap between two pools): put back at the same place (within
+       two route points) a second time, it goes on from the third safe route point after */
+    if (autopilot && i != 0xFF && last_i != 0xFF && i <= last_i + 2 && i + 2 >= last_i && ++again >= 2) {
+        for (k = i + 1, again = 0; k < MH->npath && again < 3; ++k)
+            if (path[k].y & 1) { i = k; ++again; }
+        again = 0;
+    } else if (i > last_i + 2 || i + 2 < last_i)
+        again = 0;
+    last_i = i;
     if (i == 0xFF) phys_place(MH->sx, MH->sy, MH->sz);
     else phys_place(path[i].x, path[i].y + 102, path[i].z);
     phys_enemies_home();
+    a8_log("rs: respawn at %u %u %d (route %u)\n", b_x[0], b_z[0], b_y[0], i);
     show_banner("-3 SECONDS", 75);
     cam_snap();
     demo_wp = nearest_pt(b_x[0], b_y[0], b_z[0], 0);
@@ -410,7 +433,7 @@ static void play_step(int8_t jx, int8_t jz)
         phys_step(0, 0);
         if ((dying_t += 2) >= DYING_HOLD) {
             if (time_left <= 0) { show_banner("OUT OF TIME", 200); game_over(0); return; }
-            if (demo && falls >= 3) { to_title(); return; }     /* the autopilot's had enough */
+            if (demo && falls >= 5) { to_title(); return; }     /* the autopilot's had enough */
             respawn();
         }
         return;

@@ -39,6 +39,8 @@ VIS     = 23
 .segment "LOWRAM"
 _hud:   .res 80
 dl:     .res 3 + 3 + 1 + VIS * 3 + 3
+dlion:  .res NT                 ; $80: map row r + 1's font or colours differ from r's
+nxt:    .res NT                 ; the next row (> r) that differs from the one above
 .segment "LOWDATA"
 _view_x: .word 0
 _view_y: .word 0
@@ -70,7 +72,8 @@ dli:    bit     NMIST
         sta     COLBK
         lda     T_PF2,x
         sta     COLPF2
-        inc     row
+        lda     nxt,x           ; the next DLI is the next row that changes
+        sta     row
         pla
         tax
         pla
@@ -121,6 +124,14 @@ vbi:    ; the view: map row view_y / 8, line view_y & 7; column view_x / 4
         lda     ROWTAB+1,x
         adc     #0
         sta     dl+1,y
+        stx     t2              ; the line's DLI: only where the next row changes
+        txa
+        lsr
+        tax
+        lda     dlion,x
+        ora     #$74            ; LMS, VSCROL, HSCROL, mode 4
+        sta     dl-1,y
+        ldx     t2
         inx
         inx
         iny
@@ -128,6 +139,8 @@ vbi:    ; the view: map row view_y / 8, line view_y & 7; column view_x / 4
         iny
         cpy     #8 + VIS * 3
         bne     @r
+        lda     #$54            ; the last: no DLI, no VSCROL
+        sta     dl+7+(VIS-1)*3
         jmp     (old_vbi)
 
 ; disp_course(): the loaded course's row addresses, fonts and colours
@@ -209,7 +222,46 @@ _disp_course:
 @c1:    inx
         cpx     _c_rows
         bne     @c
-        rts
+        ; which rows need a DLI (vbi, dli): row r + 1 differs from r
+        ldx     #0
+@dd:    lda     #0
+        cpx     #NT - 1
+        bcs     @ds
+        lda     T_CH+1,x
+        cmp     T_CH,x
+        bne     @dy
+        lda     T_BK+1,x
+        cmp     T_BK,x
+        bne     @dy
+        lda     T_PF0+1,x
+        cmp     T_PF0,x
+        bne     @dy
+        lda     T_PF1+1,x
+        cmp     T_PF1,x
+        bne     @dy
+        lda     T_PF2+1,x
+        cmp     T_PF2,x
+        bne     @dy
+        lda     #0
+        beq     @ds
+@dy:    lda     #$80
+@ds:    sta     dlion,x
+        inx
+        cpx     #NT
+        bne     @dd
+        ldy     #NT - 1         ; nxt[r]: from the end down
+        ldx     #NT - 1
+@nx:    tya
+        sta     nxt,x
+        dex
+        bmi     @nd
+        lda     dlion,x
+        beq     @nx
+        txa
+        tay
+        iny
+        jmp     @nx
+@nd:    rts
 
 ; disp_init(): the display list, the DLI and the VBI
 _disp_init:
