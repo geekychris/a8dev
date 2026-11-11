@@ -74,7 +74,7 @@ typedef struct {
     pos x, z, v;                        /* v: pos a tick */
     uint16_t yaw;
     int8_t reload, orbit;               /* orbit: which way a scout circles */
-    uint16_t ai_timer;
+    uint8_t ai_a, ai_b;                 /* port: the mind's clocks, 0..59 and 0..199 (no divisions) */
     uint8_t held;                       /* a practice target: doesn't move or shoot */
 } Tank;
 
@@ -120,11 +120,22 @@ uint8_t td_blocked(pos x, pos z, uint8_t r);   /* inside an obstacle or a wall? 
 uint8_t td_fire(uint8_t tank);          /* 1 if a shell went */
 
 /* maths (td_fix.c): Q14 sine, the angle of a vector, a length */
-extern const int16_t td_sin_tab[320];   /* sin(i * 2pi / 256) * 16384, cos = +64 */
-#define td_sin(a)   (td_sin_tab[(uint8_t)((uint16_t)(a) >> 8)])
-#define td_cos(a)   (td_sin_tab[(uint8_t)((uint16_t)(a) >> 8) + 64])
 uint16_t td_atan2(pos x, pos z);        /* the angle of (x, z) from +z towards +x */
 uint16_t td_len(pos x, pos z);          /* |(x, z)| within 4% */
+#ifndef HOST                            /* port: straight to the asm (atan.s, fast.s) */
+extern pos at_x, at_z, ln_x, ln_z;
+extern uint16_t __fastcall__ td_atan2_(void);
+extern uint16_t __fastcall__ td_len_(void);
+#define td_atan2(x, z) (at_x = (x), at_z = (z), td_atan2_())
+#define td_len(x, z)   (ln_x = (x), ln_z = (z), td_len_())
+#endif
 pos td_scale(pos v, int16_t s14);       /* v * s / 16384 */
+/* port: Q8 sines, and v * s8 / 256 by a8_3d's multiply (asm) */
+extern const int16_t td_sin8_tab[320];
+#define td_sin8(a)  (td_sin8_tab[(uint8_t)((uint16_t)(a) >> 8)])
+#define td_cos8(a)  (td_sin8_tab[(uint8_t)((uint16_t)(a) >> 8) + 64])
+extern int16_t a3d_mb;
+extern int16_t __fastcall__ a3d_mulf_(int16_t a);
+#define td_scale8(v, s8) (a3d_mb = (s8), a3d_mulf_(v))
 
 #endif

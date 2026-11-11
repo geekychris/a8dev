@@ -299,6 +299,15 @@ int main(void)
             LOG_N(" round=", G.round);
             LOG_N(" tick=", (long)t_rules * 228 / (n_ticks ? n_ticks : 1));
             LOG_N(" draw=", (long)t_draw * 228 / (n_draws ? n_draws : 1));
+#ifdef TT
+            {
+                extern uint16_t tt_part[6];
+                uint8_t q;
+                extern uint16_t tt_ai[4];
+                for (q = 0; q < 6; ++q) { LOG_N(" p", q); LOG_N("=", (long)tt_part[q] * 228 / (n_ticks ? n_ticks : 1)); tt_part[q] = 0; }
+                for (q = 0; q < 4; ++q) { LOG_N(" a", q); LOG_N("=", (long)tt_ai[q] * 228 / (n_ticks ? n_ticks : 1)); tt_ai[q] = 0; }
+            }
+#endif
             LOG_END();
             t_rules = t_draw = n_ticks = n_draws = 0;
             frames = 0;

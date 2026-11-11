@@ -206,43 +206,43 @@ neg_ma: sec
         sta     ma+1
         rts
 
-; t = (a * b) >> 8 into (mr+1, mr+2): macro-ish helper
+; (a * b) >> 8 by a8_3d's quarter-square multiply (a3d_mulf_: b in
+; a3d_mb, a in A/X, the result in A/X)
+        .import _a3d_mulf_, _a3d_mb
 .macro  mul aa, bb
-        lda     aa
-        sta     ma
-        lda     aa+1
-        sta     ma+1
         lda     bb
-        sta     mb
+        sta     _a3d_mb
         lda     bb+1
-        sta     mb+1
-        jsr     mul16q8
+        sta     _a3d_mb+1
+        lda     aa
+        ldx     aa+1
+        jsr     _a3d_mulf_
 .endmacro
 
 _rot2:  mul     _r_dx, _r_cc
-        lda     mr+1
         sta     _r_cx
-        lda     mr+2
-        sta     _r_cx+1
+        stx     _r_cx+1
         mul     _r_dz, _r_cs
+        sta     tq
+        stx     tq+1
         sec
         lda     _r_cx
-        sbc     mr+1
+        sbc     tq
         sta     _r_cx
         lda     _r_cx+1
-        sbc     mr+2
+        sbc     tq+1
         sta     _r_cx+1
         mul     _r_dx, _r_cs
-        lda     mr+1
         sta     _r_cz
-        lda     mr+2
-        sta     _r_cz+1
+        stx     _r_cz+1
         mul     _r_dz, _r_cc
         clc
-        lda     _r_cz
-        adc     mr+1
+        adc     _r_cz
         sta     _r_cz
-        lda     _r_cz+1
-        adc     mr+2
+        txa
+        adc     _r_cz+1
         sta     _r_cz+1
         rts
+
+.segment "BSS"
+tq:     .res 2

@@ -18,6 +18,9 @@ PARM    = $06F0                 ; to (2), length (2)
         .word   start, end
 .endmacro
 
+        .import __LOWX_START__, __LOWX_LAST__
+.segment "LOWXH"
+        chunk   __LOWX_START__, __LOWX_LAST__ - 1
 .segment "XLCH"
         chunk   __XLC_START__, __XLC_LAST__ - 1
 .segment "XLCOPY"

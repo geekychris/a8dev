@@ -11,23 +11,39 @@
 #pragma static-locals (on)
 
 /* ---------- the enemies ---------- */
+#ifdef TT
+extern uint16_t tt_ai[4];
+extern uint16_t a3d_ticks(void);
+extern uint16_t a3d_since(uint16_t t0);
+static uint16_t ta;
+#define A0() ta = a3d_ticks()
+#define A1(n) tt_ai[n] += a3d_since(ta)
+#else
+#define A0()
+#define A1(n)
+#endif
 void think(uint8_t k)
 {
     Tank *t = &G.tk[k], *p = &G.tk[0];
-    pos dx = p->x - t->x, dz = p->z - t->z, speed = vmax[t->type];
-    uint16_t d = td_len(dx, dz), to = td_angle_to(dx, dz), want = to;
-    t->ai_timer++;
+    pos dx, dz, speed;
+    uint16_t d, to, want;
+    A0();
+    dx = p->x - t->x; dz = p->z - t->z; speed = vmax[t->type];
+    d = td_len(dx, dz); to = td_angle_to(dx, dz); want = to;
+    A1(0); A0();
+    if (++t->ai_a >= 60) t->ai_a = 0;       /* port: the original's ai_timer % 60, % 200 */
+    if (++t->ai_b >= 200) t->ai_b = 0;
     if (t->reload > 0) t->reload--;
     switch (t->type) {
     case TK_SCOUT:
-        if (t->ai_timer % 60 > 35) {            /* turn in to snipe */
+        if (t->ai_a > 35) {            /* turn in to snipe */
             want = to;
             speed = U(2);                       /* the original's 1 unit an original tick */
             if (iabs(adiff(to, t->yaw)) < 700 && d < U(900)) td_fire(k);
         } else if (d > U(420)) want = to + t->orbit * 0x1000;
         else if (d < U(260)) want = to + t->orbit * 0x6000;
         else want = to + t->orbit * 0x4000;
-        if (t->ai_timer % 200 == 199) t->orbit = -t->orbit;
+        if (t->ai_b == 199) t->orbit = -t->orbit;
         break;
     case TK_MORTAR:
         if (d < U(450)) want = to + 0x8000;
@@ -40,10 +56,13 @@ void think(uint8_t k)
         if (iabs(adiff(to, t->yaw)) < 600 && d < U(900)) td_fire(k);
         break;
     }
+    A1(1); A0();
     /* something in the way ahead: steer round it */
-    if (speed > 0 && td_blocked(t->x + td_scale(U(70), td_sin(t->yaw)), t->z + td_scale(U(70), td_cos(t->yaw)), TD_TANK_R))
+    if (speed > 0 && td_blocked(t->x + td_scale8(U(70), td_sin8(t->yaw)), t->z + td_scale8(U(70), td_cos8(t->yaw)), TD_TANK_R))
         want = t->yaw + t->orbit * 0x2000;
+    A1(2); A0();
     drive(t, want, speed);
+    A1(3);
 }
 
 /* ---------- the autopilot ---------- */
@@ -92,7 +111,7 @@ uint8_t td_bot(void)
         }
     }
     /* something in the way */
-    if ((in & TD_IN_UP) && td_blocked(p->x + td_scale(U(60), td_sin(p->yaw)), p->z + td_scale(U(60), td_cos(p->yaw)), TD_TANK_R))
+    if ((in & TD_IN_UP) && td_blocked(p->x + td_scale8(U(60), td_sin8(p->yaw)), p->z + td_scale8(U(60), td_cos8(p->yaw)), TD_TANK_R))
         want = p->yaw + 0x3000;
     diff = adiff(want, p->yaw);
     if (diff > 500) in |= TD_IN_RIGHT;           /* port: 250 an original tick */

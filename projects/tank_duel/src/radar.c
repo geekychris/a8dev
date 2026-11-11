@@ -14,6 +14,9 @@
 #include "td.h"
 #include "view.h"
 
+extern int16_t r_dx, r_dz, r_cx, r_cz, r_cs, r_cc;   /* fast.s */
+void rot2(void);
+
 #define PM(n)    ((uint8_t *)(0x9C00 + ((n) << 8)))
 #define MIS      ((uint8_t *)0x9B00)
 #define RTOP     30                      /* the radar's first scan line */
@@ -59,7 +62,7 @@ void radar_update(void)
 {
     static uint8_t *b;
     const Tank *p = &G.tk[0], *t;
-    int16_t s = td_sin(p->yaw) >> 6, c = td_cos(p->yaw) >> 6, dx, dz, rx, rz;
+    int16_t s = td_sin8(p->yaw), c = td_cos8(p->yaw), dx, dz, rx, rz;
     uint8_t k, col, row;
     b = PM(3) + RTOP;
     memset(b, 0, RH);
@@ -69,8 +72,10 @@ void radar_update(void)
         if (t->type == TK_BULWARK && (G.tick & 2)) continue;   /* bulwarks flash */
         dx = UNITS(t->x - p->x);
         dz = UNITS(t->z - p->z);
-        rx = (int16_t)(((int32_t)dx * c - (int32_t)dz * s) >> 8);   /* across */
-        rz = (int16_t)(((int32_t)dx * s + (int32_t)dz * c) >> 8);   /* ahead */
+        r_dx = dx; r_dz = dz; r_cs = s; r_cc = c;
+        rot2();
+        rx = r_cx;                          /* across */
+        rz = r_cz;                          /* ahead */
         rx = rx / 160 + 8;
         rz = 16 - rz / 80;
         if (rx < 1 || rx > 14 || rz < 1 || rz > 30) continue;
@@ -83,8 +88,10 @@ void radar_update(void)
         if (!m->alive || !(G.tick & 1)) continue;
         dx = UNITS(m->tx - p->x);
         dz = UNITS(m->tz - p->z);
-        rx = (int16_t)(((int32_t)dx * c - (int32_t)dz * s) >> 8) / 160 + 8;
-        rz = 16 - (int16_t)(((int32_t)dx * s + (int32_t)dz * c) >> 8) / 80;
+        r_dx = dx; r_dz = dz; r_cs = s; r_cc = c;
+        rot2();
+        rx = r_cx / 160 + 8;
+        rz = 16 - r_cz / 80;
         if (rx < 1 || rx > 14 || rz < 1 || rz > 30) continue;
         MIS[RTOP + rz] |= 0xC0;
         (&HPOSM0)[3] = (uint8_t)(RX + rx * 2);

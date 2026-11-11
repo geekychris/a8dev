@@ -92,7 +92,7 @@ static void face(uint8_t k)
 
 /* port: far away (beyond LOD units) an object is one polygon, its outline
    between its leftmost and rightmost vertical edges */
-#define LOD 500
+#define LOD 350
 static int16_t far_d;
 static uint8_t vis;                     /* the sides seen: bit i = side i (corner i to i + 1) */
 
@@ -169,8 +169,8 @@ static void corners4(int16_t a, int16_t b0, int16_t b1, int16_t ux, int16_t uz, 
 /* the shade of a side facing world angle a (light from the south-west) */
 static uint8_t side_shade(uint16_t a, uint8_t lo)
 {
-    int16_t s = td_sin(a + 0x6000);    /* -16384..16384 */
-    return (uint8_t)(lo + (s > 8000 ? 2 : s > -8000 ? 1 : 0));
+    int16_t s = td_sin8(a + 0x6000);   /* -256..256 */
+    return (uint8_t)(lo + (s > 125 ? 2 : s > -125 ? 1 : 0));
 }
 
 /* ---------- the walls ----------
@@ -203,14 +203,14 @@ static uint8_t clip_side(int16_t da, int16_t db)
     return 1;
 }
 
-static void wall(int16_t x0, int16_t z0, int16_t x1, int16_t z1, uint8_t shade)
+static int16_t acx[4], acz[4];          /* the arena's corners in camera space (a frame's) */
+
+static void wall(uint8_t a, uint8_t b, uint8_t shade)
 {
     uint8_t i;
     static const uint8_t f[4] = { 0, 2, 3, 1 };
-    corner(0, x0, z0);
-    corner(1, x1, z1);
-    qx[0] = a3d_vx[0]; qz[0] = a3d_vz[0];
-    qx[1] = a3d_vx[1]; qz[1] = a3d_vz[1];
+    qx[0] = acx[a]; qz[0] = acz[a];
+    qx[1] = acx[b]; qz[1] = acz[b];
     if (!clip_side(qz[0] - WNEAR, qz[1] - WNEAR)) return;
     if (!clip_side(qz[0] - qx[0], qz[1] - qx[1])) return;    /* x <= z */
     if (!clip_side(qz[0] + qx[0], qz[1] + qx[1])) return;    /* -x <= z */
@@ -229,21 +229,20 @@ static void wall(int16_t x0, int16_t z0, int16_t x1, int16_t z1, uint8_t shade)
 
 static void walls(void)
 {
-    /* seen from inside: each from left to right */
-    wall(-1000, 1000, 1000, 1000, 2);           /* north */
-    wall(1000, 1000, 1000, -1000, 3);           /* east */
-    wall(1000, -1000, -1000, -1000, 2);         /* south */
-    wall(-1000, -1000, -1000, 1000, 3);         /* west */
+    /* the corners NW, NE, SE, SW once; each wall seen from inside, left to right */
+    static const int16_t cx[4] = { -1000, 1000, 1000, -1000 }, cz[4] = { 1000, 1000, -1000, -1000 };
+    uint8_t i;
+    for (i = 0; i < 4; ++i) { corner(0, cx[i], cz[i]); acx[i] = a3d_vx[0]; acz[i] = a3d_vz[0]; }
+    wall(0, 1, 2);                              /* north */
+    wall(1, 2, 3);                              /* east */
+    wall(2, 3, 2);                              /* south */
+    wall(3, 0, 3);                              /* west */
 }
 
 /* ---------- the objects, far to near ---------- */
-#ifdef DBGOBJ
-#include "a8log.h"
-uint8_t dbg_frame;
-#endif
 #define MAXOBJ (TD_MAX_OBS + TD_MAX_TANKS)
-#define VIEW_FAR 1300                   /* port: nothing beyond (the radar shows it) */
-#define MAXDRAW 8                       /* port: at most this many objects drawn */
+#define VIEW_FAR 1100                   /* port: nothing beyond (the radar shows it) */
+#define MAXDRAW 7                       /* port: at most this many objects drawn */
 static uint8_t ord[MAXOBJ], nobj;
 static int16_t odist[MAXOBJ];
 
@@ -301,14 +300,14 @@ static void tank(const Tank *t, int16_t d)
 {
     uint16_t ry = t->yaw - cam_yaw;
     uint8_t sh[4], lo = t->type == TK_SCOUT ? 4 : t->type == TK_MORTAR ? 2 : 0;
-    int16_t s = td_sin(ry) >> 6, c = td_cos(ry) >> 6;
+    int16_t s = td_sin8(ry), c = td_cos8(ry);
     tux = c; tuz = -s;                      /* across: the tank's right */
     tvx = s; tvz = c;                       /* along: its front */
     /* the camera in the tank's frame: across = (cos, -sin), along = (sin, cos) */
     r_dx = cam_x - UNITS(t->x);
     r_dz = cam_z - UNITS(t->z);
-    r_cs = td_sin(t->yaw) >> 6;
-    r_cc = td_cos(t->yaw) >> 6;
+    r_cs = td_sin8(t->yaw);
+    r_cc = td_cos8(t->yaw);
     rot2();
     tlu = r_cx;
     tlv = r_cz;
@@ -370,24 +369,8 @@ static void objects(void)
     for (; k < n; ++k) {
         i = ord[k];
         far_d = odist[k];
-#ifdef DBGOBJ
-        if (dbg_frame == 3) {
-            char b[8];
-            a8_log_s("obj "); itoa(i, b, 10); a8_log_s(b); a8_log_s(" d="); itoa(odist[k], b, 10); a8_log_s(b);
-        }
-#endif
         if (i < G.nobs) obstacle(&G.ob[i]);
         else tank(&G.tk[i - G.nobs], odist[k]);
-#ifdef DBGOBJ
-        if (dbg_frame == 3) {
-            char b[8]; uint8_t q;
-            a8_log_s(" vis="); itoa(vis, b, 10); a8_log_s(b);
-            a8_log_s(" nc="); itoa(nearclip, b, 10); a8_log_s(b);
-            for (q = 0; q < 8; ++q) { a8_log_s(" "); itoa(a3d_sx[q], b, 10); a8_log_s(b); a8_log_s(","); itoa(a3d_sy[q], b, 10); a8_log_s(b); }
-            a8_log_s(" v0="); itoa(a3d_vx[0], b, 10); a8_log_s(b); a8_log_s(","); itoa(a3d_vy[0], b, 10); a8_log_s(b); a8_log_s(","); itoa(a3d_vz[0], b, 10); a8_log_s(b);
-            a8_log_c('\n');
-        }
-#endif
     }
     nobj = n;
 }
@@ -454,20 +437,13 @@ static void booms(void)
 /* ---------- the frame ---------- */
 uint16_t vt_clear, vt_walls, vt_obj, vt_miss, vt_nobj;
 void view_draw(void)
-#ifdef NODRAW
-{ }
-void view_draw_unused(void)
-#endif
 {
     const Tank *p = &G.tk[0];
     cam_x = UNITS(p->x);
     cam_z = UNITS(p->z);
     cam_yaw = p->yaw;
-    r_cs = cs = td_sin(p->yaw) >> 6;
-    r_cc = cc = td_cos(p->yaw) >> 6;
-#ifdef DBGOBJ
-    ++dbg_frame;
-#endif
+    r_cs = cs = td_sin8(p->yaw);
+    r_cc = cc = td_cos8(p->yaw);
     rA[0] = a3d_mulf(26, cc); rB[0] = a3d_mulf(26, cs);
     rA[1] = a3d_mulf(34, cc); rB[1] = a3d_mulf(34, cs);
     rA[2] = a3d_mulf(50, cc); rB[2] = a3d_mulf(50, cs);
@@ -493,67 +469,4 @@ void view_init(void)
     a3d_view(80, V_HORIZON, 80);
 }
 
-#ifdef BENCH
-#include "a8log.h"
-void bench_view(void)
-{
-    uint16_t t;
-    uint8_t i;
-    const Tank *p = &G.tk[0];
-    cam_x = UNITS(p->x); cam_z = UNITS(p->z);
-    r_cs = cs = td_sin(p->yaw) >> 6; r_cc = cc = td_cos(p->yaw) >> 6;
-    t = a3d_ticks();
-    for (i = 0; i < 10; ++i) walls();
-    a8_log_s("bench: walls x10 cycles="); { char b[12]; ultoa((unsigned long)a3d_since(t) * 228, b, 10); a8_log_s(b); } a8_log_c('\n');
-    {
-        static const char *nm[4] = {"wall N ", "wall E ", "wall S ", "wall W "};
-        static const int16_t w[4][4] = {{-1000,1000,1000,1000},{1000,1000,1000,-1000},{1000,-1000,-1000,-1000},{-1000,-1000,-1000,1000}};
-        uint8_t k;
-        for (k = 0; k < 4; ++k) {
-            char b[12];
-            t = a3d_ticks();
-            wall(w[k][0], w[k][1], w[k][2], w[k][3], 2);
-            a8_log_s(nm[k]); ultoa((unsigned long)a3d_since(t) * 228, b, 10); a8_log_s(b);
-            a8_log_s(" px="); itoa(a3d_px[0], b, 10); a8_log_s(b); a8_log_s(","); itoa(a3d_py[0], b, 10); a8_log_s(b);
-            a8_log_s(" "); itoa(a3d_px[1], b, 10); a8_log_s(b); a8_log_s(","); itoa(a3d_py[1], b, 10); a8_log_s(b);
-            a8_log_s(" "); itoa(a3d_px[2], b, 10); a8_log_s(b); a8_log_s(","); itoa(a3d_py[2], b, 10); a8_log_s(b);
-            a8_log_s(" "); itoa(a3d_px[3], b, 10); a8_log_s(b); a8_log_s(","); itoa(a3d_py[3], b, 10); a8_log_s(b);
-            a8_log_c('\n');
-        }
-    }
-    t = a3d_ticks();
-    for (i = 0; i < 10; ++i) {
-        a3d_px[0] = 36; a3d_py[0] = 33; a3d_px[1] = 124; a3d_py[1] = 33;
-        a3d_px[2] = 124; a3d_py[2] = 35; a3d_px[3] = 36; a3d_py[3] = 35;
-        a3d_poly(4);
-    }
-    a8_log_s("bench: poly 88x2 x10 cycles="); { char b[12]; ultoa((unsigned long)a3d_since(t) * 228, b, 10); a8_log_s(b); } a8_log_c('\n');
-    t = a3d_ticks();
-    for (i = 0; i < 10; ++i) {
-        a3d_px[0] = 36; a3d_py[0] = 33; a3d_px[1] = 124; a3d_py[1] = 33;
-        a3d_px[2] = 124; a3d_py[2] = 35; a3d_px[3] = 36; a3d_py[3] = 35;
-        a3d_fill(4);
-    }
-    a8_log_s("bench: fill 88x2 x10 cycles="); { char b[12]; ultoa((unsigned long)a3d_since(t) * 228, b, 10); a8_log_s(b); } a8_log_c('\n');
-    t = a3d_ticks();
-    for (i = 0; i < 10; ++i) { qx[0] = -500; qz[0] = 300; qx[1] = 700; qz[1] = 900; clip_side(qz[0] - qx[0], qz[1] - qx[1]); }
-    a8_log_s("bench: clip x10 cycles="); { char b[12]; ultoa((unsigned long)a3d_since(t) * 228, b, 10); a8_log_s(b); } a8_log_c('\n');
-    t = a3d_ticks();
-    for (i = 0; i < 10; ++i) corner(0, 100, 300);
-    a8_log_s("bench: corner x10 cycles="); { char b[12]; ultoa((unsigned long)a3d_since(t) * 228, b, 10); a8_log_s(b); } a8_log_c('\n');
-    t = a3d_ticks();
-    for (i = 0; i < 10; ++i) a3d_project(0, 8);
-    a8_log_s("bench: project8 x10 cycles="); { char b[12]; ultoa((unsigned long)a3d_since(t) * 228, b, 10); a8_log_s(b); } a8_log_c('\n');
-#define BT(label, stmt) t = a3d_ticks(); for (i = 0; i < 10; ++i) { stmt; } \
-    a8_log_s(label); { char b[12]; ultoa((unsigned long)a3d_since(t) * 228 / 10, b, 10); a8_log_s(b); } a8_log_c('\n')
-    BT("one: centre ", centre(UNITS(G.ob[0].x), UNITS(G.ob[0].z)));
-    BT("one: corners4 ", corners4(26, -26, 26, cc, cs, -cs, cc));
-    BT("one: ycam ", ycam(130));
-    BT("one: outside ", outside(0, 1));
-    BT("one: obstacle ", far_d = 300; obstacle(&G.ob[0]));
-    BT("one: rot2 ", r_dx = 300; r_dz = 700; rot2());
-    t = a3d_ticks();
-    for (i = 0; i < 10; ++i) objects();
-    a8_log_s("bench: objects x10 cycles="); { char b[12]; ultoa((unsigned long)a3d_since(t) * 228, b, 10); a8_log_s(b); } a8_log_c('\n');
-}
-#endif
+

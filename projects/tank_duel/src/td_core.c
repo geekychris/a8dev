@@ -14,6 +14,11 @@
 #pragma bss-name (push, "LOWRAM")             /* ($0C00-$1FFF: not zeroed; td_new_game clears it) */
 TDGame G;
 #pragma bss-name (pop)
+#ifdef TT
+uint16_t tt_part[6], tt0, tt_ai[4];
+extern uint16_t a3d_ticks(void);
+extern uint16_t a3d_since(uint16_t t0);
+#endif
 
 const char *const td_tank_names[TK_COUNT] = { "PLAYER", "SCOUT", "MORTAR", "BULWARK" };
 
@@ -261,7 +266,10 @@ static void tanks_apart(void)
     }
 }
 
-/* turn towards heading `want` and drive at `speed` (negative: back) */
+/* turn towards heading `want` and drive at `speed` (negative: back);
+   port: in asm (drive.s) on the Atari */
+#ifdef HOST
+#define push_out_fast push_out
 void drive(Tank *t, uint16_t want, pos speed)
 {
     int16_t d = adiff(want, t->yaw), r = (int16_t)turn[t->type];
@@ -271,16 +279,28 @@ void drive(Tank *t, uint16_t want, pos speed)
     /* the original's 0.5 / 0.6 units an original tick, twice */
     if (t->v < speed) { t->v += U(2); if (t->v > speed) t->v = speed; }
     else if (t->v > speed) { t->v -= 38; if (t->v < speed) t->v = speed; }
-    t->x += td_scale(t->v, td_sin(t->yaw));
-    t->z += td_scale(t->v, td_cos(t->yaw));
+    t->x += td_scale8(t->v, td_sin8(t->yaw));
+    t->z += td_scale8(t->v, td_cos8(t->yaw));
     push_out(t);
 }
+#else
+extern uint16_t dr_want;
+extern pos dr_speed;
+void __fastcall__ drive_(Tank *t);
+void __fastcall__ push_out_fast(Tank *t);
+void drive(Tank *t, uint16_t want, pos speed)
+{
+    dr_want = want;
+    dr_speed = speed;
+    drive_(t);
+}
+#endif
 
 uint8_t td_fire(uint8_t tank)
 {
     Tank *t = &G.tk[tank];
     uint8_t k;
-    int16_t fx = td_sin(t->yaw), fz = td_cos(t->yaw);
+    int16_t fx = td_sin8(t->yaw), fz = td_cos8(t->yaw);
     Shell *s = G.sh;
     if (t->reload > 0 || !t->alive) return 0;
     for (k = 0; k < TD_MAX_SHELLS; k++, s++) if (!s->alive) break;
@@ -289,10 +309,10 @@ uint8_t td_fire(uint8_t tank)
     s->owner = tank;
     s->bounces = 1;
     s->life = TD_SHELL_LIFE;
-    s->x = t->x + td_scale(U(TD_TANK_R + 6), fx);
-    s->z = t->z + td_scale(U(TD_TANK_R + 6), fz);
-    s->dx = td_scale(TD_SHELL_STEP, fx);
-    s->dz = td_scale(TD_SHELL_STEP, fz);
+    s->x = t->x + td_scale8(U(TD_TANK_R + 6), fx);
+    s->z = t->z + td_scale8(U(TD_TANK_R + 6), fz);
+    s->dx = td_scale8(TD_SHELL_STEP, fx);
+    s->dz = td_scale8(TD_SHELL_STEP, fz);
     t->reload = (int8_t)reload_t[t->type];
     if (tank == 0) G.shots++;
     event(tank ? TDE_EFIRE : TDE_FIRE, tank, 0, t->x, t->z);
@@ -313,8 +333,8 @@ void lob(uint8_t tank)
     m->x0 = t->x;
     m->z0 = t->z;
     /* where the player will be in half the flight */
-    m->tx = p->x + td_scale(p->v, td_sin(p->yaw)) * (MORTAR_FLIGHT / 2);
-    m->tz = p->z + td_scale(p->v, td_cos(p->yaw)) * (MORTAR_FLIGHT / 2);
+    m->tx = p->x + td_scale8(p->v, td_sin8(p->yaw)) * (MORTAR_FLIGHT / 2);
+    m->tz = p->z + td_scale8(p->v, td_cos8(p->yaw)) * (MORTAR_FLIGHT / 2);
     t->reload = (int8_t)reload_t[t->type];
     event(TDE_LOB, tank, k, m->tx, m->tz);
 }
@@ -338,6 +358,10 @@ static void damage(uint8_t tank, uint8_t amount, pos x, pos z)
 }
 
 /* ---------- shells ---------- */
+extern Shell *fly_sh;                   /* shell.s */
+extern uint8_t fly_n, fly_obs, fly_tanks, fly_hit;
+uint8_t shell_fly(void);
+
 static void shells(void)
 {
     uint8_t k, s, j, obs_near, tank_near;
@@ -361,9 +385,22 @@ static void shells(void)
                     dz < U(TD_TANK_R + 40) && dz > -U(TD_TANK_R + 40)) tank_near |= (uint8_t)(1 << j);
             }
         }
-        for (s = 0; s < TD_SHELL_STEPS && sh->alive; s++) {
-            sh->x += sh->dx;
-            sh->z += sh->dz;
+        for (s = 0; s < TD_SHELL_STEPS && sh->alive; ) {
+            /* port: the steps in the open in asm (shell.s): it stops after a
+               step that needs the checks below */
+            {
+                uint8_t mask = 0;
+                Tank *t = G.tk;
+                for (j = 0; j < G.ntanks; j++, t++)
+                    if ((tank_near & (1 << j)) && t->alive && !(j == sh->owner && sh->bounces) &&
+                        !(sh->owner != 0 && j != 0)) mask |= (uint8_t)(1 << j);
+                fly_sh = sh;
+                fly_n = TD_SHELL_STEPS - s;
+                fly_obs = obs_near;
+                fly_tanks = mask;
+                s += shell_fly();
+                if (!fly_hit) break;
+            }
             /* the walls: one bounce, then it's spent */
             if (sh->x > lim || sh->x < -lim || sh->z > lim || sh->z < -lim) {
                 if (!sh->bounces) { sh->alive = 0; event(TDE_SPLASH, 0, 0, sh->x, sh->z); break; }
@@ -408,10 +445,10 @@ static void shells(void)
                         if (sh->bounces) {
                             uint16_t a = 2 * t->yaw - td_angle_to(-sh->dx, -sh->dz);
                             sh->bounces--;
-                            sh->dx = td_scale(TD_SHELL_STEP, td_sin(a));
-                            sh->dz = td_scale(TD_SHELL_STEP, td_cos(a));
-                            sh->x = t->x + td_scale(U(TD_TANK_R + 4), td_sin(a));
-                            sh->z = t->z + td_scale(U(TD_TANK_R + 4), td_cos(a));
+                            sh->dx = td_scale8(TD_SHELL_STEP, td_sin8(a));
+                            sh->dz = td_scale8(TD_SHELL_STEP, td_cos8(a));
+                            sh->x = t->x + td_scale8(U(TD_TANK_R + 4), td_sin8(a));
+                            sh->z = t->z + td_scale8(U(TD_TANK_R + 4), td_cos8(a));
                             sh->owner = j;
                         } else sh->alive = 0;
                         break;
@@ -464,18 +501,32 @@ void td_tick(uint8_t in)
         }
         return;
     }
+#ifdef TT
+#define T0() tt0 = a3d_ticks()
+#define T1(n) tt_part[n] += a3d_since(tt0)
+    T0();
+#else
+#define T0()
+#define T1(n)
+#endif
     /* the player */
     dir = (in & TD_IN_RIGHT ? 1 : 0) - (in & TD_IN_LEFT ? 1 : 0);
     speed = (in & TD_IN_UP) ? vmax[0] : (in & TD_IN_DOWN) ? -vmax[0] * 3 / 5 : 0;
     drive(p, p->yaw + dir * (int16_t)turn[0], speed);
     if (p->reload > 0) p->reload--;
     if (in & TD_IN_FIRE) td_fire(0);
+    T1(0); T0();
     /* the enemies */
     for (k = 1; k < G.ntanks; k++) if (G.tk[k].alive && !G.tk[k].held) think(k);
+    T1(1); T0();
     tanks_apart();
-    for (k = 0; k < G.ntanks; k++) if (G.tk[k].alive) push_out(&G.tk[k]);
+    T1(2); T0();
+    for (k = 0; k < G.ntanks; k++) if (G.tk[k].alive) push_out_fast(&G.tk[k]);
+    T1(3); T0();
     shells();
+    T1(4); T0();
     mortars();
+    T1(5);
     if (!G.over && G.ntanks > 1 && td_enemies_left() == 0) {
         int16_t bonus = 500 * G.round + p->hp * 5;
         G.score += bonus;
