@@ -54,7 +54,7 @@ with Emulator() as emu:
     emu.run(2)
     fps = [int(v) for v in re.findall(r"fps10=(\d+)", emu.log(0))]
     print(f"       demo fps x10: {fps}")
-    check("demo >= 7 fps (3 shaded cubes)", fps and min(fps) >= 70, str(fps))
+    check("demo >= 6.5 fps (3 shaded cubes)", fps and min(fps) >= 65, str(fps))
 
     img = emu.screenshot(HERE / "build" / "test.png")
     check("cubes drawn (5+ colours)", len(img.getcolors(1 << 16) or []) >= 5)

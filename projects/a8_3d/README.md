@@ -13,19 +13,19 @@ and demo (three spinning shaded cubes, wireframe on FIRE).
 | Part | How | Where |
 |---|---|---|
 | Display | ANTIC mode D, 160 x up to 96 in 4 colours + up to 3 ANTIC 2 text rows | `a3d_init.c` |
-| Double buffering | two display lists, switched by the high byte of `SDLSTL` (one store: atomic for the VBI) | `a3d_init.c` |
+| Double buffering | two display lists, switched by the high byte of `SDLSTL` (one store: atomic for the VBI); `a3d_sync` waits for a VBI *after* the switch before the other buffer is drawn | `a3d_init.c` |
 | HUD colours | a DLI on the last 3D line sets the text rows' colours, so COLOR0-2 stay free for the 3D | `a3d_zp.s` |
 | Multiply | quarter squares, one 768-entry table pair for signed and unsigned 8 x 8 (exact, 26 cycles a product) | `a3d_math.s` |
 | Transform | Q7 rotation matrix (int8, 127 = 1.0) x int8 model vertices + int16 origin, rounded | `a3d_math.s` |
 | Projection | z normalised to 128..255, one reciprocal table `f*256/z` for both axes; the pixel aspect lives in the camera matrix's y row | `a3d_math.s` |
 | Matrices | yaw/pitch/roll from a Q7 sine table, 3 x 3 multiply in asm, 16-bit vector rotate | `a3d_mat.c`, `a3d_math.s` |
-| Polygons | convex, clockwise; edges walked from the top into left/right tables (16.8 fixed point, slope = dx * 65536/dy), down edges are the right side, so anticlockwise polygons fill nothing | `a3d_fill.s` |
-| Spans | masked edge bytes from tables by x, whole bytes by an unrolled `sta (p),y / iny` entered at the right point | `a3d_fill.s` |
-| Shading | two alternating patterns (even/odd lines): 7 shades from 4 colours (`a3d_shade_set`) | `a3d_fill.s` |
-| Culling | the screen winding of the first three vertices (8 x 8 cross product, deltas shrunk to fit) | `a3d_fill.s` |
-| Clipping | x by clamping each edge per line (exact for convex polygons); top/bottom by Sutherland-Hodgman in C; the near plane in camera space (C) | `a3d_fill.s`, `a3d_clip.c` |
-| Lines | Bresenham with incremental pointer and mask; Cohen-Sutherland clip in C | `a3d_fill.s`, `a3d_line.c` |
-| Clearing | rows: one pass of X over all pages with a store per page (5 cycles a byte); or the "dirty" rectangle each buffer recorded | `a3d_fill.s` |
+| Polygons | convex, clockwise; edges walked from the top into left/right tables (16.8 fixed point, slope = dx * 65536/dy), down edges are the right side, so anticlockwise polygons fill nothing | `a3d_poly.s` |
+| Spans | masked edge bytes from tables by x, whole bytes by an unrolled `sta (p),y / iny` entered at the right point | `a3d_span.s`, `a3d_span.inc` |
+| Shading | two alternating patterns (even/odd lines): 7 shades from 4 colours (`a3d_shade_set`) | `a3d_poly.s`, `a3d_sin.c` |
+| Culling | the screen winding of the first three vertices (8 x 8 cross product, deltas shrunk to fit) | `a3d_poly.s` |
+| Clipping | x by clamping each edge per line (exact for convex polygons); top/bottom by Sutherland-Hodgman in C; the near plane in camera space (C) | `a3d_poly.s`, `a3d_clip.c` |
+| Lines | Bresenham with incremental pointer and mask; Cohen-Sutherland clip in C | `a3d_line.s`, `a3d_line.c` |
+| Clearing | rows: one pass of X over all pages with a store per page (5 cycles a byte); or the "dirty" rectangle each buffer recorded | `a3d_span.s` |
 | Maths helpers | `a3d_muldiv` (16 x 16 / 16 in asm), `a3d_mulf` (16 x 16 >> 8) | `a3d_math.s` |
 
 ## Using it
@@ -40,6 +40,7 @@ include $(A8_SDK)/project.mk
 ```c
 #include "a3d.h"
 a3d_init(88, 1);                       /* 88 lines of 3D + 1 text row */
+a3d_view(80, 44, 80);                  /* centre, focal length (before a3d_xform) */
 a3d_print(0, 0, "SCORE");
 for (;;) {
     a3d_clear_dirty(A3D_C0);           /* what this buffer drew last time */
@@ -75,8 +76,9 @@ it runs on a 64K 800XL (the test runs it there too).
 
 The whole library is about 10K of code, 2.9K of tables and 1.9K of BSS
 (64 transformed vertices, the projection table, edge tables). It is an
-ar65 library, so a game that only fills polygons doesn't link the line,
-wireframe or text modules.
+ar65 library of small modules, so a game links only what it calls:
+stack_tower, which draws with its own row compositor and `a3d_span`,
+takes about 3K of it (display, spans, text) and none of the maths.
 
 ## Speed
 
@@ -98,7 +100,7 @@ keeps each one inside a budget):
 | a cube's 6 faces (3 drawn, ~21 x 18 pixels each) | 43,000 |
 
 A PAL frame is 35,568 cycles. The demo (three shaded cubes, each with
-its own matrix, dirty-rectangle clears) runs at **8 frames a second**.
+its own matrix, dirty-rectangle clears) runs at **7 frames a second**.
 Where the time goes (`tools/profile.py`, PC sampling): edge walking 8%,
 the transform 8%, multiplier set-up 7%, projection 6%, span loop 5%, face
 gather/cull 7%, cc65 call overhead about 10%, `sound_tick` 3%.
@@ -110,7 +112,7 @@ pixels. So the games draw as little 3D as they can:
 
 | Game | Frame-rate target | How |
 |---|---|---|
-| stack_tower | 25 fps between locks | the tower drawn only when it changes or turns, the falling piece and ghost in player/missile graphics |
+| stack_tower | measured 48 fps falling, 12-13 turning | rings redrawn only when they change, the core in players (see its README) |
 | lander_3d | 12-17 fps | a coarse terrain grid, the lander a sprite |
 | marble_tilt | 17-25 fps | the maze redrawn only when the tilt changes, the marble a 50 Hz sprite |
 | block_breaker_3d | 50 Hz ball, 25 fps scene | the tunnel drawn once into both buffers, bricks redrawn when hit, ball/shadow/paddle as sprites |

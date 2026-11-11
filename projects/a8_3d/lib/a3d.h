@@ -20,7 +20,7 @@
  * camera space (x right, y down, z forward), perspective through a
  * reciprocal table (focal length * 256 / z, z normalised to 128..255).
  *
- * Drawing (asm, a3d_fill.s / a3d_line.s): convex polygons clockwise on the
+ * Drawing (asm, a3d_poly.s polygons, a3d_span.s spans/clears/lines): convex polygons clockwise on the
  * screen (anticlockwise ones draw nothing: free back-face culling), filled
  * a span at a time with whole bytes in the middle, optionally in two
  * alternating patterns (dither: 7 shades from 4 colours); clipped lines;
@@ -52,7 +52,7 @@ extern uint8_t a3d_back;         /* 0/1: the buffer being drawn */
    (frame_wait(): sound ticks), return the frames since the previous flip */
 extern uint8_t a3d_flip(void);
 extern void a3d_show(void);      /* just switch (no wait) ... */
-extern uint8_t a3d_sync(void);   /* ... then wait before drawing again */
+extern uint8_t a3d_sync(void);   /* ... then wait for a VBI after it before drawing again */
 extern uint8_t *a3d_dlist(uint8_t buf);   /* display list of a buffer */
 /* text in the rows (ASCII, bit 7 = inverse); a number right-aligned in width */
 extern void a3d_print(uint8_t x, uint8_t row, const char *s);
@@ -135,7 +135,7 @@ extern void a3d_rot16(const a3d_mat *m, int16_t x, int16_t y, int16_t z, int16_t
    D pixels are ~1.17 times taller than wide, so a camera matrix from
    a3d_cam_ypr scales its y row by a3d_aspect (Q7, default 109 = 0.85).
    Camera-space y you compute yourself needs the same scale. */
-extern void a3d_view(uint8_t cx, uint8_t cy, uint8_t f);
+extern void a3d_view(uint8_t cx, uint8_t cy, uint8_t f);   /* call before a3d_xform */
 extern uint8_t a3d_aspect;
 extern void a3d_cam_ypr(a3d_mat *out, uint8_t yaw, uint8_t pitch, uint8_t roll);
 

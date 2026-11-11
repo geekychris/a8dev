@@ -296,6 +296,7 @@ static void demo(void)
 int main(void)
 {
     a3d_init(88, 1);
+    a3d_view(80, 44, 80);
     sound_init();
     frame_init();
     COLOR4 = A8_COLOR(9, 4);       /* sky (pixel value 0) */

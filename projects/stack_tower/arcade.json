@@ -1,0 +1,7 @@
+{
+  "title": "Stack Tower",
+  "ready": "st: ready",
+  "description": "Falling pieces wrap round a 16-column tower: turn it under them and fill whole rings to clear them.",
+  "controls": "Stick turns/rotates/drops, FIRE hard drop, SELECT hold, OPTION rotate back",
+  "picture": "screenshots/playing.png"
+}
