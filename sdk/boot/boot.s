@@ -14,6 +14,7 @@
 ; Fixed entry points for programs (the arcade menu):
 ;   $0706  JMP boot           reload + run the menu (entry 0)
 ;   $0709  JMP run_entry      A = directory entry: load that XEX and run it
+;                             (uses no zero page; RAM $0700-$0BFF)
 ;   $070C  JMP read_sector    sector in $0B/$0C (AUX), buffer in BUFRLO/HI -> carry set on error
 ;
 ; RESET returns to the menu (DOSINI/DOSVEC point at boot).
@@ -24,11 +25,17 @@ DOSVEC  = $000A
 DOSINI  = $000C
 BOOTQ   = $0009
 WARMST  = $0008
-ZPTR    = $00CB         ; 2 bytes: XEX segment pointer (free zero page under cc65? we
-ZEND    = $00CD         ; only run between programs, so anything goes)
-ZSEC    = $00CF         ; 2 bytes: next sector
-ZLEFT   = $00D1         ; 3 bytes: bytes left in the file
-ZBPOS   = $00D4         ; position in the sector buffer
+; No zero page: a program's INIT segments (bank selects, cc65's system check)
+; run between our segments and may use any of it. Our state lives at $0BA0+
+; and segments are stored through a self-modified absolute address (stptr).
+ZEND    = $0BA0         ; 2 bytes: segment end
+ZSEC    = $0BA2         ; 2 bytes: next sector
+ZLEFT   = $0BA4         ; 3 bytes: bytes left in the file
+ZBPOS   = $0BA7         ; position in the sector buffer
+ZTMP    = $0BA8         ; 2 bytes: segment start while reading the header
+RAMTOP  = $006A
+MEMTOP  = $02E5
+APPMHI  = $000E
 RUNAD   = $02E0
 INITAD  = $02E2
 SDMCTL  = $022F
@@ -82,7 +89,19 @@ run_entry:
         ldx     #$FF
         txs                     ; fresh stack (we never return)
         pha
+        ; MEMTOP as the OS sets it for a GRAPHICS 0 screen below RAMTOP
+        ; ((RAMTOP - 4) * 256 + $1F): the previous program (the menu: the SDK's
+        ; crt lowers it to $8FFF) must not make cc65's system check refuse
+        ; the next one ("not enough memory" -> back here).
+        lda     #$1F
+        sta     MEMTOP
+        sec
+        lda     RAMTOP
+        sbc     #4
+        sta     MEMTOP+1
         lda     #0
+        sta     APPMHI
+        sta     APPMHI+1
         sta     SDMCTL          ; screen off while loading
         sta     GRACTL          ; players/missiles off
         sta     AUDCTL
@@ -149,27 +168,30 @@ segment:
         lda     #>rts_only
         sta     INITAD+1
 @hdr:   jsr     getbyte
-        sta     ZPTR
+        sta     ZTMP
         jsr     getbyte
-        sta     ZPTR+1
-        and     ZPTR
+        sta     ZTMP+1
+        and     ZTMP
         cmp     #$FF
         beq     @hdr            ; $FFFF marker
+        lda     ZTMP
+        sta     @stptr+1
+        lda     ZTMP+1
+        sta     @stptr+2
         jsr     getbyte
         sta     ZEND
         jsr     getbyte
         sta     ZEND+1
 @data:  jsr     getbyte
-        ldy     #0
-        sta     (ZPTR),y
-        lda     ZPTR
+@stptr:  sta     $FFFF           ; operand = the next address (self-modified)
+        lda     @stptr+1
         cmp     ZEND
-        lda     ZPTR+1
+        lda     @stptr+2
         sbc     ZEND+1
         bcs     @segdone        ; ptr >= end: that was the last byte
-        inc     ZPTR
+        inc     @stptr+1
         bne     @data
-        inc     ZPTR+1
+        inc     @stptr+2
         jmp     @data
 @segdone:
         jsr     call_init
