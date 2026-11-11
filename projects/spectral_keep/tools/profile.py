@@ -7,7 +7,8 @@ segment: code in the bank window is charged to the bank mapped at the time
 addresses get the right names. C runtime helpers are also charged to the
 C function that called them (the second list).
 
-    .venv/bin/python projects/spectral_keep/tools/profile.py [frames] [skip]
+    .venv/bin/python projects/spectral_keep/tools/profile.py [frames] [skip] [stick] [room]
+        (FIRE starts the game; the stick is held until the room, then let go)
     .venv/bin/python projects/spectral_keep/tools/profile.py trace FUNC [skip]
         (every instruction of one call of FUNC, counted by function)
 """
@@ -66,6 +67,10 @@ with Emulator(machine="130xe") as emu:
     emu.press("FIRE")                    # start The Gatehouse, walk north
     emu.run(60)
     emu.hold(sys.argv[3] if len(sys.argv) > 3 and not trace else "UP")
+    if len(sys.argv) > 4 and not trace:          # walk until that room, then stand
+        emu.run_until(f"room {sys.argv[4]} visited", 3000)
+        emu.run(25)
+        emu.release()
     emu.run(skip)
     if trace:
         emu.break_at(sys.argv[2])

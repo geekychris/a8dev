@@ -18,6 +18,7 @@ Body w_body[MAXBODIES];
 #pragma bss-name (pop)
 Body w_gridbody;
 uint8_t w_nbody;
+extern uint8_t w_pushed;
 uint8_t grid[MAXH][MAXW][MAXW];          /* port: not static: gather.s reads them */
 uint8_t gw, gd;
 
@@ -284,6 +285,7 @@ static fix move_axis(Body *b, uint8_t axis, fix d, uint8_t canpush, uint8_t dept
             if (ob.y0 >= start.y1 - 102 || ob.y1 <= start.y0 + 102) continue;   /* above or below us (205) */
             gap = d > 0 ? BLO(&ob, axis) - shi : BHI(&ob, axis) - slo;
             move_axis(o, axis, d - gap, 1, depth + 1);
+            w_pushed = 1;
         }
     }
     n = gather(&swept, b, b->player);
@@ -363,6 +365,7 @@ static void axis_prep(void)
 void axis_prep(void);                       /* boxes.s */
 #endif
 uint8_t w_pushables;                        /* pushable bodies in the room (room.c) */
+uint8_t w_pushed;                           /* port: something was pushed (room.c's resting crates) */
 
 static fix axis_move(Body *b, uint8_t axis, fix d, uint8_t canpush)
 {

@@ -332,6 +332,8 @@ static void towards(fix *tx, fix *tz, int16_t len)
     *tz = (fix)(smul16(*tz, q) >> 10);
 }
 
+static uint8_t crates_settled;              /* port: nothing was pushed last step */
+
 static void tick_actor(Actor *a)
 {
     fix moved[3], px, py, pz, tx, tz;
@@ -406,8 +408,22 @@ static void tick_actor(Actor *a)
         pose(a, (px - a->body->px) / 20, (pz - a->body->pz) / 20, 0);
         break;
     case K_CRATE:
-        a->body->vx = a->body->vz = 0;
-        w_step(a->body, 0, moved);
+        {
+            /* port: a crate at rest (on the ground, not moved since its last
+               step, nothing pushed last step, not on a lift) would only fall
+               0 and land where it is: its step is skipped */
+            Body *b = a->body;
+            uint8_t i;
+            if (crates_settled && b->grounded && b->vy == 0 && b->ground &&
+                b->px == a->lx && b->py == a->ly && b->pz == a->lz) {
+                for (i = 0; i < R.nlift; i++)
+                    if (R.lift[i].body == b->ground) break;
+                if (i == R.nlift) break;
+            }
+            b->vx = b->vz = 0;
+            w_step(b, 0, moved);
+            a->lx = b->px; a->ly = b->py; a->lz = b->pz;
+        }
         break;
     }
 }
@@ -480,6 +496,8 @@ void room_tick(int16_t mx, int16_t mz, uint8_t jump)
     Actor *p;
     uint8_t i;
     R.clock += STEP;
+    crates_settled = !w_pushed;
+    w_pushed = 0;
     /* port: pointers stepped through the arrays, not R.x[i] (cc65 multiplies) */
     {
         Lift *lf = R.lift;

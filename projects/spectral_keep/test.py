@@ -39,7 +39,17 @@ def bare_room_ok(emu):
         import gen_gfx
     except ImportError as e:
         return None, f"no numpy? {e}"
-    if not (HERE / "build" / "host" / "room_0_0.bin").exists():
+    host = HERE / "build" / "host"
+    if not (host / "room_0_0.bin").exists():          # the original's renderer, on the host
+        import subprocess
+        host.mkdir(parents=True, exist_ok=True)
+        o = HERE / "tools" / "orig"
+        r = subprocess.run(["cc", "-O2", f"-I{o}", "-o", str(host / "export"), str(HERE / "tools" / "export.c")] +
+                           [str(o / f) for f in ("vox.c", "textures.c", "levels.c", "room.c", "world.c", "scene.c")] +
+                           ["-DSCENE_RGB15", "-lm"], capture_output=True)
+        if r.returncode or subprocess.run([str(host / "export"), str(host)], cwd=HERE, capture_output=True).returncode:
+            return None, "couldn't build tools/export.c"
+    if not (host / "room_0_0.bin").exists():
         return None, "build/host not made (tools/export.c)"
     table, rooms = gen_gfx.main()
     lv = next(r for r in rooms if (r["l"], r["r"]) == (0, 0))["lv"]

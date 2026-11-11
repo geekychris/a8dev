@@ -79,7 +79,9 @@ int main(void)
         t0 = frames16();
         pressed = take_latch();
         game_step(pad_of(in_held), pad_of(pressed));
-        probe_update();
+#ifndef A8_RELEASE
+        probe_update();                     /* (for the tests) */
+#endif
         t1 = frames16();
         snd_service();
         view_step();

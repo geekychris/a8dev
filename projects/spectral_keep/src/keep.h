@@ -86,6 +86,7 @@ extern Body w_body[MAXBODIES];
 extern uint8_t w_nbody;             /* port: bodies in use are below this */
 extern Body w_gridbody;             /* "standing on a block" */
 extern uint8_t w_pushables;         /* port: pushable bodies in the room */
+extern uint8_t w_pushed;            /* port: something was pushed this step */
 void  w_reset(uint8_t w, uint8_t d);
 void  w_set_block(uint8_t x, uint8_t y, uint8_t z);
 uint8_t w_block(int8_t x, int8_t y, int8_t z);
@@ -120,11 +121,12 @@ typedef struct {
     int8_t coyote, jumpbuf;
     uint8_t was_grounded, visible;
     fix ground;                     /* port: top of what's below (shadows), room_grounds() */
+    fix lx, ly, lz;                 /* port: a crate's place at its last step (resting crates) */
 } Actor;
 typedef struct { Body *body; fix base; int8_t dir; int8_t wait; } Lift;
 typedef struct { uint8_t kind, x, y, z; uint16_t cell; Box box; } Pickup;
 typedef struct { Body *body; uint8_t x, y, z, rot; } Gate;
-#define MAXACT   24
+#define MAXACT   16                  /* port: 24; the busiest room (the cellar) has 15 */
 #define MAXLIFT  6
 #define MAXPICK  12
 #define MAXHAZ   48

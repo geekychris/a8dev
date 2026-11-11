@@ -1,0 +1,7 @@
+{
+  "title": "Spectral Keep",
+  "ready": "sk: ready",
+  "description": "An isometric flip-screen adventure: three keeps, relics to carry to the throne, guards and ghosts.",
+  "controls": "Stick walk, FIRE jump, OPTION pause; title: up/down keep, FIRE start",
+  "picture": "screenshots/hall.png"
+}

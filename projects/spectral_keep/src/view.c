@@ -134,6 +134,10 @@ static uint8_t gidx;                        /* the room's index in gfx_rooms */
 static uint8_t nb, b_id[MAXBMP], b_x0[MAXBMP], b_w[MAXBMP], b_y0[MAXBMP], b_h[MAXBMP];
 static int16_t b_x[MAXBMP], b_y[MAXBMP];
 
+static fix c_px[MAXACT], c_py[MAXACT], c_pz[MAXACT];
+static int16_t c_sx[MAXACT], c_sy[MAXACT];
+static uint8_t c_ok[MAXACT];                /* (cleared as a room is drawn) */
+
 static void bmp_list(uint8_t *n, uint8_t *id, int16_t *x, int16_t *y)
 {
     uint8_t i, k = 0;
@@ -156,8 +160,12 @@ static void bmp_list(uint8_t *n, uint8_t *id, int16_t *x, int16_t *y)
     for (i = 0; i < R.nact && k < MAXBMP; ++i) {
         const Body *b = R.act[i].body;
         if (R.act[i].kind != K_CRATE) continue;
-        proj(b->px, b->py, b->pz, &sx, &sy);
-        id[k] = 0; x[k] = sx; y[k] = sy; ++k;
+        /* a crate that hasn't moved: its last projection */
+        if (b->px != c_px[i] || b->py != c_py[i] || b->pz != c_pz[i] || !c_ok[i]) {
+            proj(b->px, b->py, b->pz, &c_sx[i], &c_sy[i]);
+            c_px[i] = b->px; c_py[i] = b->py; c_pz[i] = b->pz; c_ok[i] = 1;
+        }
+        id[k] = 0; x[k] = c_sx[i]; y[k] = c_sy[i]; ++k;
     }
     *n = k;
 }
@@ -175,23 +183,53 @@ static void bmp_draw_all(void)
     }
 }
 
-/* after a step: what moved is restored and drawn again */
+/* after a step: what moved is restored (its old box from bank 3) and drawn
+   again, with whatever overlaps the boxes restored */
+static uint8_t overlaps(uint8_t i, uint8_t x0, uint8_t w, uint8_t y0, uint8_t h)
+{
+    return b_x0[i] < x0 + w && x0 < b_x0[i] + b_w[i] && b_y0[i] < y0 + h && y0 < b_y0[i] + b_h[i];
+}
+
 static void bmp_update(void)
 {
-    static uint8_t n2, id2[MAXBMP];
+    static uint8_t n2, id2[MAXBMP], moved[MAXBMP], nd, dx0[MAXBMP], dw[MAXBMP], dy0[MAXBMP], dh[MAXBMP];
     static int16_t x2[MAXBMP], y2[MAXBMP];
-    uint8_t i;
+    uint8_t i, j, redraw;
     bmp_list(&n2, id2, x2, y2);
-    if (n2 == nb && !memcmp(id2, b_id, nb) && !memcmp(x2, b_x, nb * 2) && !memcmp(y2, b_y, nb * 2)) return;
+    if (n2 != nb) {                         /* a pickup taken: all of them again */
+        for (i = 0; i < nb; ++i) {
+            db_x0 = b_x0[i]; db_w = b_w[i]; db_y0 = b_y0[i]; db_h = b_h[i];
+            restore_box();
+        }
+        nb = n2;
+        memcpy(b_id, id2, nb);
+        memcpy(b_x, x2, nb * 2);
+        memcpy(b_y, y2, nb * 2);
+        bmp_draw_all();
+        return;
+    }
+    nd = 0;
     for (i = 0; i < nb; ++i) {
+        moved[i] = id2[i] != b_id[i] || x2[i] != b_x[i] || y2[i] != b_y[i];
+        if (!moved[i]) continue;
+        dx0[nd] = b_x0[i]; dw[nd] = b_w[i]; dy0[nd] = b_y0[i]; dh[nd] = b_h[i];
+        ++nd;
         db_x0 = b_x0[i]; db_w = b_w[i]; db_y0 = b_y0[i]; db_h = b_h[i];
         restore_box();
+        b_id[i] = id2[i]; b_x[i] = x2[i]; b_y[i] = y2[i];
     }
-    nb = n2;
-    memcpy(b_id, id2, nb);
-    memcpy(b_x, x2, nb * 2);
-    memcpy(b_y, y2, nb * 2);
-    bmp_draw_all();
+    if (!nd) return;
+    for (i = 0; i < nb; ++i) {
+        redraw = moved[i];
+        for (j = 0; j < nd && !redraw; ++j) redraw = overlaps(i, dx0[j], dw[j], dy0[j], dh[j]);
+        if (!redraw) continue;
+        db_id = b_id[i];
+        db_x = b_x[i];
+        db_y = b_y[i];
+        bmp_box();
+        b_x0[i] = db_x0; b_w[i] = db_w; b_y0[i] = db_y0; b_h[i] = db_h;
+        draw_bmp();
+    }
 }
 
 void view_room(void)
@@ -238,6 +276,7 @@ void view_room(void)
     }
     pj_ox = 160 + ISO_X * (r->d - r->w) / 2;
     pj_oy = 100 + (3 * ISO_Y + ISO_Z * (r->w + r->d + 2)) / 2;
+    memset(c_ok, 0, sizeof c_ok);
     bmp_list(&nb, b_id, b_x, b_y);
     bmp_draw_all();
     view_sprites(1);
