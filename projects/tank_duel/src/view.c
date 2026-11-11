@@ -26,7 +26,6 @@
 
 static int16_t cam_x, cam_z, cs, cc;
 static uint16_t cam_yaw;    /* the camera: units, sine and cosine Q8 */
-static uint8_t nv;                      /* vertices used this object */
 
 /* a footprint corner (world units) into camera space (vertex i) */
 extern int16_t r_dx, r_dz, r_cx, r_cz, r_cs, r_cc;      /* fast.s */
@@ -41,18 +40,8 @@ static void corner(uint8_t i, int16_t wx, int16_t wz)
     a3d_vz[i] = r_cz;
 }
 
-/* the same for a corner (ox, oz) off a centre already turned: (ccx, ccz)
-   + the offset turned (port: 4 multiplies a corner made objects slow) */
 static int16_t ccx, ccz;
 static void centre(int16_t wx, int16_t wz) { corner(0, wx, wz); ccx = a3d_vx[0]; ccz = a3d_vz[0]; }
-static void offset(uint8_t i, int16_t ox, int16_t oz)
-{
-    r_dx = ox;
-    r_dz = oz;
-    rot2();
-    a3d_vx[i] = ccx + r_cx;
-    a3d_vz[i] = ccz + r_cz;
-}
 
 static int16_t ycam_(int16_t y)         /* height -> camera y (the pixels' aspect: 109/128) */
 {
@@ -68,14 +57,6 @@ static int16_t ytab[YMAX];              /* ycam for 0..130 (view_init) */
    (world 2D cross product): a3d's own winding test, on screen and on
    shrunk deltas, can let a face seen edge-on through */
 static uint8_t fi[5];
-
-/* the side from corner i to j faces the camera (camera space: the camera
-   at the origin; edges are short, so the products don't saturate) */
-static uint8_t outside(uint8_t i, uint8_t j)
-{
-    int16_t ex = a3d_vx[j] - a3d_vx[i], ez = a3d_vz[j] - a3d_vz[i];
-    return a3d_mulf(ez, a3d_vx[i]) - a3d_mulf(ex, a3d_vz[i]) > 2;
-}
 
 /* a face through vertices fi[0..k-1]: straight to a3d_poly when none is
    behind the near plane (a3d_face's C near-clipping and gather cost ~5,000
@@ -109,20 +90,9 @@ static void box_vis(int16_t lu, int16_t lv, int16_t a, int16_t b0, int16_t b1)
 
 static void prism_faces(uint8_t n, const uint8_t *shade, uint8_t top)
 {
-    uint8_t i, j, l, r;
+    uint8_t i, j;
     nearclip = 0;
     for (i = 0; i < n + n; ++i) nearclip |= a3d_vclip[i];
-    if (far_d > LOD && !nearclip) {
-        l = r = 0;
-        for (i = 1; i < n; ++i) {
-            if (a3d_sx[i] < a3d_sx[l]) l = i;
-            if (a3d_sx[i] > a3d_sx[r]) r = i;
-        }
-        fi[0] = l; fi[1] = (uint8_t)(n + l); fi[2] = (uint8_t)(n + r); fi[3] = r;
-        a3d_shade_set(shade[1]);
-        face(4);
-        return;
-    }
     for (i = 0; i < n; ++i) {
         j = (uint8_t)(i + 1 == n ? 0 : i + 1);
         if (!(vis & (1 << i))) continue;
@@ -166,6 +136,39 @@ static void corners4(int16_t a, int16_t b0, int16_t b1, int16_t ux, int16_t uz, 
     a3d_vx[3] = ccx + ax + p0x; a3d_vz[3] = ccz + az + p0z;
 }
 
+/* ---------- a8_3d's convex path (a3d_prism.s) ----------
+   a box in one asm call: the centre (ccx, ccz), the turn (pc, ps: Q7, by
+   the angle between the camera and the object), the sides seen (vis: mine
+   are bit 0 left, 1 front, 2 right, 3 back; a3d's 0 back, 1 right,
+   2 front, 3 left, 4 top). Returns 1 when a corner is nearer than the near
+   plane: then the C path below draws it (a3d_face clips). */
+static int8_t pc, ps;
+static const uint8_t rev4[16] = { 0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15 };
+
+static void pr_set(int16_t hw, int16_t z0, int16_t z1, int16_t y0, int16_t y1, const uint8_t *sh, uint8_t top)
+{
+    a3d_pr_x = ccx; a3d_pr_z = ccz;
+    a3d_pr_c = pc; a3d_pr_s = ps;
+    a3d_pr_hw = (uint8_t)hw; a3d_pr_z0 = (int8_t)z0; a3d_pr_z1 = (int8_t)z1;
+    a3d_pr_y0 = ycam(y0); a3d_pr_y1 = ycam(y1);
+    a3d_pr_shade[0] = sh[3]; a3d_pr_shade[1] = sh[1];
+    a3d_pr_shade[2] = sh[0]; a3d_pr_shade[3] = sh[2];
+    a3d_pr_shade[4] = top;
+    a3d_pr_vis = (uint8_t)(rev4[vis] | (top && y1 < EYE ? 16 : 0));
+    a3d_pr_far = 0;
+}
+
+/* 0: drawn (or nothing to draw); 1: near-clipped, use the C path */
+static uint8_t fast_box(int16_t hw, int16_t z0, int16_t z1, int16_t y0, int16_t y1, const uint8_t *sh, uint8_t top)
+{
+    pr_set(hw, z0, z1, y0, y1, sh, top);
+    if (far_d > LOD) {                  /* (one quad, the front's shade) */
+        a3d_pr_far = 1;
+        a3d_pr_shade[0] = sh[1];
+    } else if (!a3d_pr_vis) return 0;
+    return a3d_prism();
+}
+
 /* the shade of a side facing world angle a (light from the south-west) */
 static uint8_t side_shade(uint16_t a, uint8_t lo)
 {
@@ -193,7 +196,9 @@ static uint8_t clip_side(int16_t da, int16_t db)
     /* t = da / (da - db) in 1/256 (0..256): the cut, from a */
     {
         uint16_t num = (uint16_t)(da < 0 ? -da : da), den = (uint16_t)(da < 0 ? db - da : da - db);
-        uint16_t tt = den ? (uint16_t)(((uint32_t)num << 8) / den) : 0;
+        uint16_t tt;
+        while (den >= 256) { num >>= 1; den >>= 1; }   /* port: 16-bit division (num <= den) */
+        tt = den ? (uint16_t)((num << 8) / den) : 0;
         t = tt > 255 ? 255 : (uint8_t)tt;
     }
     {
@@ -207,24 +212,16 @@ static int16_t acx[4], acz[4];          /* the arena's corners in camera space (
 
 static void wall(uint8_t a, uint8_t b, uint8_t shade)
 {
-    uint8_t i;
-    static const uint8_t f[4] = { 0, 2, 3, 1 };
     qx[0] = acx[a]; qz[0] = acz[a];
     qx[1] = acx[b]; qz[1] = acz[b];
     if (!clip_side(qz[0] - WNEAR, qz[1] - WNEAR)) return;
     if (!clip_side(qz[0] - qx[0], qz[1] - qx[1])) return;    /* x <= z */
     if (!clip_side(qz[0] + qx[0], qz[1] + qx[1])) return;    /* -x <= z */
-    for (i = 0; i < 2; ++i) {                                  /* 0, 1 the foot; 2, 3 the top */
-        a3d_vx[i] = a3d_vx[i + 2] = qx[i];
-        a3d_vz[i] = a3d_vz[i + 2] = qz[i] < WFAR ? WFAR : qz[i];   /* (on the screen: a3d's y clipping of long edges is slow) */
-        a3d_vy[i] = ycam(0);
-        a3d_vy[i + 2] = ycam(WALL_H);
-    }
-    a3d_project(0, 4);
-    if (a3d_sx[0] >= a3d_sx[1]) return;         /* (seen from behind) */
-    for (i = 0; i < 4; ++i) { a3d_px[i] = a3d_sx[f[i]]; a3d_py[i] = a3d_sy[f[i]]; }
-    a3d_shade_set(shade);
-    a3d_poly(4);
+    a3d_pr_ax = qx[0]; a3d_pr_az = qz[0] < WFAR ? WFAR : qz[0];
+    a3d_pr_bx = qx[1]; a3d_pr_bz = qz[1] < WFAR ? WFAR : qz[1];
+    a3d_pr_y0 = ycam(0); a3d_pr_y1 = ycam(WALL_H);
+    a3d_pr_shade[0] = shade;
+    a3d_wallquad();                 /* (never near-clipped: the ends are at WFAR or beyond) */
 }
 
 static void walls(void)
@@ -242,7 +239,7 @@ static void walls(void)
 /* ---------- the objects, far to near ---------- */
 #define MAXOBJ (TD_MAX_OBS + TD_MAX_TANKS)
 #define VIEW_FAR 1100                   /* port: nothing beyond (the radar shows it) */
-#define MAXDRAW 7                       /* port: at most this many objects drawn */
+#define MAXDRAW 10                      /* port: at most this many objects drawn */
 static uint8_t ord[MAXOBJ], nobj;
 static int16_t odist[MAXOBJ];
 
@@ -255,12 +252,22 @@ static void obstacle(const Obstacle *o)
     uint8_t k = r == 26 ? 0 : r == 34 ? 1 : 2;
     static const uint8_t pil[4] = { 2, 4, 3, 1 }, cra[4] = { 3, 5, 4, 2 };
     centre(ox, oz);
+    box_vis(cam_x - ox, cam_z - oz, r, -r, r);
+    pc = a3d_sin8[(uint8_t)(cam_yaw >> 8) + 64];
+    ps = a3d_sin8[(uint8_t)(cam_yaw >> 8)];
+    if (o->kind == OB_PILLAR) { if (!fast_box(r, -r, r, 0, 130, pil, 0)) return; }
+    else if (o->kind == OB_CRATE) { if (!fast_box(r, -r, r, 0, 56, o->hp >= 2 ? cra : pil, 0)) return; }
+    else {
+        static const uint8_t psh[4] = { 3, 5, 4, 2 };
+        pr_set(r, -r, r, 0, 110, psh, 0);
+        if (!a3d_pyramid()) return;
+    }
+    /* (near-clipped: the C path) */
     A = rA[k]; B = rB[k];                   /* corners: clockwise from above */
     a3d_vx[0] = ccx - A + B; a3d_vz[0] = ccz - B - A;
     a3d_vx[1] = ccx - A - B; a3d_vz[1] = ccz - B + A;
     a3d_vx[2] = ccx + A - B; a3d_vz[2] = ccz + B + A;
     a3d_vx[3] = ccx + A + B; a3d_vz[3] = ccz + B - A;
-    box_vis(cam_x - ox, cam_z - oz, r, -r, r);
     if (o->kind == OB_PILLAR) prism(4, 0, 130, pil, 0);
     else if (o->kind == OB_CRATE) prism(4, 0, 56, o->hp >= 2 ? cra : pil, 0);
     else {
@@ -278,7 +285,6 @@ static void obstacle(const Obstacle *o)
             fi[0] = (uint8_t)(i == 3 ? 0 : i + 1); fi[1] = 4; fi[2] = i;
             a3d_shade_set(sh[i]);
             face(3);
-            if (far_d > LOD) break;             /* (far: one face) */
         }
     }
 }
@@ -291,8 +297,9 @@ static int16_t tlu, tlv;                /* the camera in the tank's frame */
 
 static void tbox(int16_t hw, int16_t z0, int16_t z1, int16_t y0, int16_t y1, const uint8_t *sh, uint8_t top)
 {
-    corners4(hw, z0, z1, tux, tuz, tvx, tvz);
     box_vis(tlu, tlv, hw, z0, z1);
+    if (!fast_box(hw, z0, z1, y0, y1, sh, top)) return;
+    corners4(hw, z0, z1, tux, tuz, tvx, tvz);
     prism(4, y0, y1, sh, top);
 }
 
@@ -301,6 +308,8 @@ static void tank(const Tank *t, int16_t d)
     uint16_t ry = t->yaw - cam_yaw;
     uint8_t sh[4], lo = t->type == TK_SCOUT ? 4 : t->type == TK_MORTAR ? 2 : 0;
     int16_t s = td_sin8(ry), c = td_cos8(ry);
+    pc = a3d_sin8[(uint8_t)((uint16_t)(cam_yaw - t->yaw) >> 8) + 64];
+    ps = a3d_sin8[(uint8_t)((uint16_t)(cam_yaw - t->yaw) >> 8)];
     tux = c; tuz = -s;                      /* across: the tank's right */
     tvx = s; tvz = c;                       /* along: its front */
     /* the camera in the tank's frame: across = (cos, -sin), along = (sin, cos) */

@@ -299,6 +299,11 @@ int main(void)
             LOG_N(" round=", G.round);
             LOG_N(" tick=", (long)t_rules * 228 / (n_ticks ? n_ticks : 1));
             LOG_N(" draw=", (long)t_draw * 228 / (n_draws ? n_draws : 1));
+            {
+                extern uint16_t vt_nobj;        /* (view.c: objects in view, a frame) */
+                LOG_N(" inview10=", (uint16_t)((uint32_t)vt_nobj * 10 / (n_draws ? n_draws : 1)));
+                vt_nobj = 0;
+            }
 #ifdef TT
             {
                 extern uint16_t tt_part[6];

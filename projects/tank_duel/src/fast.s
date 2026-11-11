@@ -142,72 +142,7 @@ _td_len_:
         inx
 :       rts
 
-; mr = (ma * mb) >> 8, ma int16, mb Q8 in -256..256 (signed). Shift-add on
-; magnitudes: 9 rounds.
-mul16q8:
-        lda     #0
-        sta     sgn
-        lda     ma+1
-        bpl     :+
-        jsr     neg_ma
-        inc     sgn
-:       lda     mb+1
-        bpl     :+
-        sec
-        lda     #0
-        sbc     mb
-        sta     mb
-        lda     #0
-        sbc     mb+1
-        sta     mb+1
-        inc     sgn
-:       lda     #0
-        sta     mr
-        sta     mr+1
-        sta     mr+2
-        ldx     #9              ; mb's 9 bits (256 = $100)
-@l:     lsr     mb+1
-        ror     mb
-        bcc     @n
-        clc
-        lda     mr+1
-        adc     ma
-        sta     mr+1
-        lda     mr+2
-        adc     ma+1
-        sta     mr+2
-@n:     ror     mr+2
-        ror     mr+1
-        ror     mr
-        dex
-        bne     @l
-        ; after 9 rounds the product is mr (24 bits) << ... : it is P >> 9 in
-        ; mr+1..2 with bit 8 in mr's top: P >> 8 = (mr+1..2) << 1 | mr bit 7
-        asl     mr
-        rol     mr+1
-        rol     mr+2
-        lda     sgn
-        and     #1
-        beq     @pos
-        sec
-        lda     #0
-        sbc     mr+1
-        sta     mr+1
-        lda     #0
-        sbc     mr+2
-        sta     mr+2
-@pos:   rts
-neg_ma: sec
-        lda     #0
-        sbc     ma
-        sta     ma
-        lda     #0
-        sbc     ma+1
-        sta     ma+1
-        rts
-
-; (a * b) >> 8 by a8_3d's quarter-square multiply (a3d_mulf_: b in
-; a3d_mb, a in A/X, the result in A/X)
+; a3d's multiply: (aa * bb) >> 8 in A/X
         .import _a3d_mulf_, _a3d_mb
 .macro  mul aa, bb
         lda     bb
