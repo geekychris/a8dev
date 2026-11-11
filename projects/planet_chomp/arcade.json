@@ -1,0 +1,7 @@
+{
+  "title": "Planet Chomp",
+  "ready": "pc: ready",
+  "description": "A maze chase round a tiny planet: eat every crumb, dodge four spooks, grab a key to turn the tables.",
+  "controls": "Stick steers (screen-relative), START/FIRE play, SELECT or P pause",
+  "picture": "screenshots/play.png"
+}
