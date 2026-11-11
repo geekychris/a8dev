@@ -104,13 +104,13 @@ python3 projects/tank_duel/tools/make_gif.py
 |---|---|
 | `$0C00-$1B72` | a8_3d's tables and work arrays, the game state, the view's arrays |
 | `$1C00-$1FBA` | asm: the tank's drive, the shells' flight (loaded there: no DOS) |
-| `$2000-$95AD` | the program: a8_3d (with its convex-object path), the view, the front end, the maths, the SDK |
+| `$2000-$95B2` | the program: a8_3d (with its convex-object path), the view, the front end, the maths, the SDK |
 | `$9600-$97FF` | C stack |
 | `$9800-$99FF` | the font's capitals and digits (copied from the ROM) |
 | `$9B00-$9FFF` | players and missiles |
 | `$A000-$BFFF` | a8_3d's two buffers, display lists, text rows |
-| `$C000-$CF78` | under the ROM: the minds and the autopilot (`td_ai.c`), the radar |
-| `$D800-$FE08` | under the ROM: the rules (`td_core.c`) |
+| `$C000-$CE78` | under the ROM: an enemy's mind (`think.s`), the autopilot (`td_ai.c`), the radar |
+| `$D800-$FC8E` | under the ROM: the rules (`td_core.c`; in asm: `apart.s`, `pushout.s`) |
 
 The XEX loads the code for under the ROM at `$9800`, a part at a time. A
 routine at `$0600`, run by INITAD, switches the ROM off and copies each
@@ -121,47 +121,59 @@ part up (`xload.s`).
 Measured in the emulator (PAL) with the `td: fps10=` lines, turning on the
 spot at the start of a round (`inview10` is ten times the objects in view):
 
-| | |
-|---|---|
-| **round 1** (2 enemies, 2–4 objects in view) | **3.7–5.5 fps**; 5.1–5.9 in play |
-| **round 4** (4 enemies) | 2.7–4.1 fps; 2.7 with ~8 objects in view |
-| **round 8** (7 enemies) | about 3 fps |
-| over the test's autopilot game | 2.9–7.8 fps, 3.9 on average |
-| a tick of the rules | 33K cycles in round 1, 42–56K in round 4, 72–80K in round 8; 12.5 a second |
-| a picture | 175–360K cycles: objects ~65%, walls ~25%, clearing ~7% |
+| | frame rate | a tick of the rules |
+|---|---|---|
+| **round 1** (2 enemies, 2–5 objects in view) | **3.7–6.3 fps** | 19–21K cycles |
+| **round 4** (4 enemies) | 2.9–5.3 fps; 2.9 with ~8 objects in view | 23–29K |
+| **round 8** (7 enemies) | 3.5–3.6 fps | 34–44K |
+| over the test's autopilot game | 2.6–4.8 fps, 3.4 on average | |
 
-That meets 5 fps only with few objects in view; the 5+ fps target with
-~10 objects in view isn't met.
+A picture costs 175–370K cycles: objects ~65%, walls ~25%, clearing ~7%.
+The rules run 12.5 ticks a second. These are wall-clock cycles,
+including ANTIC's DMA and the interrupts. In CPU cycles, a round-8 tick is
+~20K and an enemy's think 5.9K.
 
-**What the time goes on now.** The picture uses a8_3d's asm path for
-upright convex objects (`a3d_prism`, `a3d_pyramid`, `a3d_wallquad`): one
-call an object, from its centre in camera space, its turn and its sizes.
-The C path is kept only for an object with a corner nearer than the near
-plane. Most of a picture is now the fill inside a8_3d. In big rounds the
-rules take most of the CPU: 7 enemies at 12.5 ticks a second is ~1M
-cycles a second.
+So 5 fps holds only with few objects in view; the 5+ fps target with ~10
+objects in view isn't met. What's left is mostly the picture's fill,
+inside a8_3d.
 
-The rules went from 60–150K cycles a tick (round 1) to 33K, by profiling
-with `projects/a8_3d/tools/profile.py` and timing each part of a tick:
+**The rules**, by profiling (`projects/a8_3d/tools/profile.py`) and timing
+each part of a tick. A round-8 tick went from 72–80K (with the minds
+already every fourth tick) to 34–44K; a round-1 tick from 60–150K at
+the start to 19–21K.
 
-- an asm obstacle query over an 8 × 8 grid of the arena;
-- asm atan2 and length;
-- the shells' flight in asm: it stops only at a step where something may
-  happen;
-- the tanks' drive and the fast path of their push-out in asm;
-- a8_3d's asm multiply-divide for pushing tanks apart (no 32-bit maths);
+In asm:
+- an obstacle query over an 8 × 8 grid of the arena (`obs.s`);
+- atan2 and length (`atan.s`, `fast.s`);
+- the shells' flight, which stops only at a step where something may
+  happen (`shell.s`);
+- the tanks' drive and the walls (`drive.s`);
+- pushing a tank out of obstacles (`pushout.s`);
+- pushing tanks apart, and the loop over the enemies (`apart.s`);
+- an enemy's mind (`think.s`).
+
+Each asm routine was checked call by call against the C's rules in the
+emulator: a breakpoint on entry and on return, and the expected result
+from a Python copy of the C. There were 0 mismatches over several hundred
+calls each, in rounds 1, 3/4 and 8. The C stays for the host build
+(`tools/run_port.c`).
+
+Changes to the rules themselves:
 - byte counters instead of modulos;
-- the minds every other tick, every fourth with more than 3 enemies.
+- the minds every other tick (every fourth with more than 3 enemies);
+- after the tanks are pushed apart, only the tanks that moved are pushed
+  out of the obstacles again (drive already pushed each one out).
 
-The picture went from 450–750K to 175–360K, by:
+**The picture** went from 450–750K to 175–370K, by:
 
-- a8_3d's convex-object path (it replaced my per-face C);
+- a8_3d's convex-object path (`a3d_prism`, `a3d_pyramid`,
+  `a3d_wallquad`): one asm call an object; the C face path stays for an
+  object with a corner nearer than the near plane;
 - clipping the walls in 2D, with a 16-bit division;
 - level of detail and the draw caps.
 
-**Still to come.** a8-3d is working on a faster fill for upright quads, and
-tank_duel will take it when it lands. After that, the next steps are the
-rules' remaining C in asm (`tanks_apart`, `think`).
+**Still to come:** a8-3d is working on a faster fill for upright faces,
+inside the same calls, so tank_duel gets it without changes.
 
 ## Test
 
@@ -173,8 +185,9 @@ rules' remaining C in asm (`tanks_apart`, `think`).
 - the arena has content;
 - SELECT hands over to the autopilot: it kills (100 a scout), takes hits
   and clears round 1, and round 2 begins;
-- then the armour is set to 1 so the next hit ends the game: game over,
-  ACE goes in the high scores, and it's back to the title;
+- then the armour is set to 1, and the score to at least 1000 so it makes
+  the table (its lowest entry is 800), so the next hit ends the game: game
+  over, ACE goes in the high scores, and it's back to the title;
 - the frame rate is logged;
 - then the same XEX boots on a 64K 800XL and its demo fights.
 

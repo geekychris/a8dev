@@ -4,8 +4,8 @@ Boots to the title (the autopilot fighting behind it, the radar, the tune
 of the effects); UP chooses round 2 and back; FIRE starts round 1. The
 joystick drives (UP: the tank moves ahead, LEFT turns it) and FIRE shoots.
 SELECT hands over to the autopilot: kills, hits taken, round 1 cleared,
-round 2 begins. Then the armour is set to 1 (memory) so the next hit
-ends the game: game over, the initials ACE in the high scores, back to the
+round 2 begins. Then the armour is set to 1 and the score to at least 1000
+(memory) so the next hit ends the game with a score for the table: game over, the initials ACE in the high scores, back to the
 title. Checks the picture has content and the frame rate. Then the same
 XEX on a 64K 800XL (the rules' code under the OS ROM: no 130XE needed).
 """
@@ -23,6 +23,7 @@ HERE = Path(__file__).resolve().parent
 PROG = HERE / "build" / "tank_duel.xex"
 failures = []
 TK0 = 12                       # G.tk[0] in TDGame (td.h): type, alive, hp, x, z, v, yaw
+SCORE = 481                    # G.score (int32)
 
 
 def check(name, ok, detail=""):
@@ -80,8 +81,13 @@ def play(machine):
         check("round 2 begins", emu.run_until("td: round 2", 800))
         emu.press("SELECT", hold_frames=4)                 # (back to the stick: stand still)
         emu.run(20)
-        # the armour to 1: the next hit ends it
-        emu.write_mem(emu.addr("G") + TK0 + 2, bytes([1]), space="ram")
+        # the armour to 1: the next hit ends it; the score to at least 1000,
+        # so it makes the table (its lowest is 800) however the fight went
+        g = emu.addr("G")
+        score = struct.unpack("<i", emu.read_mem(g + SCORE, 4, space="ram"))[0]
+        check("the score is read back", 0 < score < 100000, str(score))
+        emu.write_mem(g + SCORE, struct.pack("<i", max(score, 1000)), space="ram")
+        emu.write_mem(g + TK0 + 2, bytes([1]), space="ram")
         ok = emu.run_until("td: dead", 6000)
         check("a hit with 1 armour left: game over", ok)
         log = emu.log_text(0)

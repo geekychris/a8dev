@@ -8,7 +8,7 @@
 ; Tank: type, alive, hp, x, z, v, yaw (td.h).
 
         .export _drive_, _dr_want, _dr_speed, _push_out_fast
-        .import _turn, _td_sin8_tab, _a3d_mulf_, _a3d_mb, _push_out
+        .import _turn, _td_sin8_tab, _a3d_mulf_, _a3d_mb, _push_out_
         .import _obs_next, _oq_x, _oq_z, _oq_extra, _oq_from
         .importzp ptr1
 
@@ -246,7 +246,7 @@ _push_out_fast:
         beq     @walls
         lda     tp
         ldx     tp+1
-        jmp     _push_out
+        jmp     _push_out_
 @walls: lda     tp
         sta     ptr1
         lda     tp+1
