@@ -5,6 +5,7 @@
  */
 #include <string.h>
 #include "keep.h"
+extern int32_t __fastcall__ smul16(int16_t a, int16_t b);
 
 Game G;
 
@@ -300,8 +301,8 @@ void game_step(uint16_t held, uint16_t pressed)
             if (held & B_DOWN) v -= D12;
             if (G.grid_controls) { mx = h; mz = v; }
             else {                                          /* screen-relative */
-                mx = (int16_t)(((int32_t)(h + v) * 2896) >> 12);
-                mz = (int16_t)(((int32_t)(v - h) * 2896) >> 12);
+                mx = (int16_t)(smul16(h + v, 2896) >> 12);     /* port: maths.s */
+                mz = (int16_t)(smul16(v - h, 2896) >> 12);
             }
             room_tick(mx, mz, (pressed & (B_A | B_B)) != 0);
         }

@@ -67,15 +67,33 @@ with Emulator(machine="130xe") as emu:
         emu.delete()
         ret = emu.backtrace(2)[1]["return"]
         cnt, n, c0 = collections.Counter(), 0, emu.position()["cycles"]
+        # the runtime helpers' entry points: count their call sites too
+        starts = {}
+        for sid, lst in syms.items():
+            for a, nm in lst:
+                if not nm.startswith("_") and "MACRO" not in nm and not nm.startswith("g_"):
+                    starts[a] = nm
+        sites = collections.Counter()
+        pc = emu.regs()["PC"]
         while n < 100000:
+            op = emu.read_mem(pc, 3)
+            if op[0] == 0x20:                       # JSR: (target, call site)
+                tgt = op[1] | (op[2] << 8)
+                tn = name_of(tgt, None)
+                if not tn.startswith("_") or tn in ("_smul16", "_sqr16", "_isqrt32"):
+                    sites[(tn, name_of(pc, None) + f"+{pc:04X}")] += 1
             emu.stepi(1)
-            pc = emu.regs()["PC"]
+            r = emu.regs()
+            pc = r["PC"]
             if pc == ret:
                 break
             cnt[name_of(pc, emu.memory_map().get("cpu_bank"))] += 1
             n += 1
         print(f"{sys.argv[2]}: {n} instructions, {emu.position()['cycles'] - c0} cycles")
         for s_, k in cnt.most_common(25):
+            print(f"  {k:6d} {s_}")
+        print("helper calls (helper, call site):")
+        for s_, k in sites.most_common(400):
             print(f"  {k:6d} {s_}")
         sys.exit(0)
     cyc = emu.cycles_per_frame

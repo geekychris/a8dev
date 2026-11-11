@@ -102,6 +102,8 @@ typedef struct {
     int16_t dx, dz;                 /* guard / bouncer heading, Q12 */
     uint8_t awake;
     int32_t bob, last_talk;
+    uint8_t bang;                   /* port: the ghost's bob angle, (bob * 2037 / 1000) & 255, */
+    uint16_t brem;                  /*   kept step by step (and its remainder, 0..999) */
     const char *text;
     uint8_t face;                   /* 0..7: 0 = +z, 2 = +x, 4 = -z, 6 = -x */
     uint16_t phase;                 /* walk cycle, 256 = one stride pair */
@@ -226,7 +228,7 @@ void snd_duck(int16_t ticks);
 void snd_music_enable(uint8_t on);
 
 /* ---- what tests read (probe.c): packed, the same bytes on the host and the Z80 ---- */
-#ifndef __SDCC
+#if !defined(__SDCC) && !defined(__CC65__)
 #pragma pack(push, 1)
 #endif
 typedef struct {
@@ -236,7 +238,7 @@ typedef struct {
     struct { uint8_t kind, x, y, z; } pk[6];
     uint16_t tick;
 } Probe;
-#ifndef __SDCC
+#if !defined(__SDCC) && !defined(__CC65__)
 #pragma pack(pop)
 #endif
 extern Probe keep_probe;

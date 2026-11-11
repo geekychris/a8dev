@@ -24,25 +24,39 @@ RoomState R;
 /* port: the squares and the root in asm (maths.s) */
 extern uint32_t __fastcall__ sqr16(int16_t a);
 extern int32_t __fastcall__ smul16(int16_t a, int16_t b);
+/* port: |(x, z)| by alpha max + beta min (0.96 max + 0.40 min, within 4%):
+   the speeds and directions it gives are the original's to a few percent,
+   without a square root a call (it took a fifth of the time) */
+static uint16_t approx_len(uint16_t ax, uint16_t az)
+{
+    uint16_t mx = ax > az ? ax : az, mn = ax > az ? az : ax;
+    return mx - (mx >> 5) + (mn >> 2) + (mn >> 3) + (mn >> 6);
+}
 static int16_t flat_len(int16_t x, int16_t z)
 {
-    return (int16_t)(isqrt32(sqr16(x >> 2) + sqr16(z >> 2)) << 2);
+    return (int16_t)approx_len(x < 0 ? (uint16_t)-x : (uint16_t)x, z < 0 ? (uint16_t)-z : (uint16_t)z);
 }
 
 /* the same for Q12 directions and speeds (u/s) that may exceed 16 bits */
 static int32_t flat_len32(int32_t x, int32_t z)
 {
     int32_t a = x >> 2, b = z >> 2;
-    if (a >= -32767 && a <= 32767 && b >= -32767 && b <= 32767)    /* port: always, in practice */
-        return (int32_t)isqrt32(sqr16((int16_t)a) + sqr16((int16_t)b)) << 2;
+    if (x >= -32767 && x <= 32767 && z >= -32767 && z <= 32767)    /* port: always, in practice */
+        return approx_len(x < 0 ? (uint16_t)-x : (uint16_t)x, z < 0 ? (uint16_t)-z : (uint16_t)z);
     return (int32_t)isqrt32((uint32_t)(a * a + b * b)) << 2;
 }
 
 static uint8_t octant(int32_t vx, int32_t vz)
 {
     int32_t ax = vx < 0 ? -vx : vx, az = vz < 0 ? -vz : vz;
-    if (ax * 10 < az * 4) return vz > 0 ? 0 : 4;      /* within 22 degrees of an axis */
-    if (az * 10 < ax * 4) return vx > 0 ? 2 : 6;
+    if (ax < 6553 && az < 6553) {                   /* port: 16-bit, as it always is (x 5 < 32768) */
+        uint16_t x5 = (uint16_t)ax * 5, z5 = (uint16_t)az * 5;
+        if (x5 < (uint16_t)az * 2) return vz > 0 ? 0 : 4;
+        if (z5 < (uint16_t)ax * 2) return vx > 0 ? 2 : 6;
+    } else {
+        if (ax * 10 < az * 4) return vz > 0 ? 0 : 4;      /* within 22 degrees of an axis */
+        if (az * 10 < ax * 4) return vx > 0 ? 2 : 6;
+    }
     if (vx > 0) return vz > 0 ? 1 : 3;
     return vz > 0 ? 7 : 5;
 }
@@ -253,6 +267,8 @@ void room_build(const KLevel *l, uint8_t ridx, uint8_t host)
             a = new_actor(K_GHOST, px, py, pz, 1126, 1638, 1126);      /* 0.55 x 0.8 */
             a->body->collides = a->body->solid = a->body->dynamic = 0;
             a->bob = (int32_t)k->x * 50 + 25;                          /* bob = pos.x seconds */
+            a->bang = (uint8_t)((a->bob * 2037) / 1000);
+            a->brem = (uint16_t)((a->bob * 2037) % 1000);
             break;
         case AT_BOUNCER:
             a = new_actor(K_BOUNCER, px, py, pz, 1229, 1270, 1229);    /* 0.6 x 0.62 */
@@ -286,7 +302,7 @@ static void pose(Actor *a, int32_t vx, int32_t vz, uint8_t walks)    /* v in u/s
     int32_t speed = flat_len32(vx, vz);
     if (speed > 205) a->face = octant(vx, vz);           /* sqrMagnitude > 0.01 (410) */
     if (!walks) return;
-    if (speed > 205) a->phase += (uint16_t)((speed * 939) >> 11);   /* 4.5 rad per unit */
+    if (speed > 205) a->phase += (uint16_t)((speed < 32768 ? smul16((int16_t)speed, 939) : speed * 939) >> 11);   /* 4.5 rad per unit */
     else a->phase = 0;
 }
 
@@ -302,7 +318,7 @@ static void walk(Actor *a, int16_t wx, int16_t wz, int16_t speed, uint8_t push, 
 
 static void player_pos(const Actor *self, fix *x, fix *y, fix *z)
 {
-    const Body *b = R.player >= 0 ? R.act[R.player].body : self->body;
+    const Body *b = R.player >= 0 ? R.act[R.player].body : self->body;   /* (once a step) */
     *x = b->px; *y = b->py; *z = b->pz;
 }
 
@@ -321,8 +337,10 @@ static uint8_t ground_ahead(Actor *a)
 /* a Q12 direction towards (tx, tz), Q11 offsets with length len */
 static void towards(fix *tx, fix *tz, int16_t len)
 {
-    *tx = (fix)(((int32_t)*tx << 12) / len);
-    *tz = (fix)(((int32_t)*tz << 12) / len);
+    /* port: 1 / len once (Q22: len > 205, so it fits 16 bits), then multiplies */
+    int16_t q = (int16_t)(((uint32_t)1 << 22) / (uint16_t)len);
+    *tx = (fix)(smul16(*tx, q) >> 10);
+    *tz = (fix)(smul16(*tz, q) >> 10);
 }
 
 static void tick_actor(Actor *a)
@@ -334,7 +352,7 @@ static void tick_actor(Actor *a)
         if (a->body->grounded && !ground_ahead(a)) { a->dx = -a->dx; a->dz = -a->dz; }
         walk(a, a->dx, a->dz, 66, 0, moved);                       /* 1.6 u/s (131) */
         {
-            int32_t along = ((int32_t)moved[0] * a->dx + (int32_t)moved[2] * a->dz) >> 12;
+            int32_t along = (smul16(moved[0], a->dx) + smul16(moved[2], a->dz)) >> 12;
             if (along < 0) along = -along;
             if (along < 33) { a->dx = -a->dx; a->dz = -a->dz; }    /* (65) */
         }
@@ -356,13 +374,17 @@ static void tick_actor(Actor *a)
         break;
     case K_GHOST:
         a->bob++;
+        a->brem += 2037;                                            /* port: no 32-bit multiply and divide a step */
+        while (a->brem >= 1000) { a->brem -= 1000; a->bang++; }
         player_pos(a, &px, &py, &pz);
         tx = px - a->body->px;
         tz = pz - a->body->pz;
         len = flat_len(tx, tz);
         if (len > 410) {                                            /* 0.2 (819) */
-            tx = (fix)((int32_t)tx * 37 / len);                    /* 0.9 u/s (74) */
-            tz = (fix)((int32_t)tz * 37 / len);
+            /* port: one divide (37 / len, Q16) and two multiplies (the same to a unit) */
+            int16_t q = (int16_t)(((uint32_t)37 << 16) / (uint16_t)len);
+            tx = (fix)(smul16(tx, q) >> 16);                        /* 0.9 u/s (74) */
+            tz = (fix)(smul16(tz, q) >> 16);
         } else tx = tz = 0;
         {
             Body *b = a->body;
@@ -374,7 +396,7 @@ static void tick_actor(Actor *a)
             if (b->pz < lo) b->pz = lo;
             if (b->pz > hiz) b->pz = hiz;
             b->py = (py > 0 ? py / 2 : 0) + 512 +                  /* 0.25 (1024), 0.2 (819) */
-                    (fix)(((int32_t)isin256((uint8_t)((a->bob * 2037) / 1000)) * 410) >> 14);
+                    (fix)(smul16(isin256(a->bang), 410) >> 14);
         }
         pose(a, (int32_t)tx * 50, (int32_t)tz * 50, 0);
         break;
@@ -414,8 +436,9 @@ static void drive_player(Actor *a, int16_t mx, int16_t mz, uint8_t jump)
         host_sound(SFX_JUMP);
     }
     if (len > D12) {
-        mx = (int16_t)(((int32_t)mx << 12) / len);
-        mz = (int16_t)(((int32_t)mz << 12) / len);
+        int16_t mxa = mx, mza = mz;
+        towards(&mxa, &mza, len);                   /* port: one divide */
+        mx = mxa; mz = mza;
     }
     walk(a, mx, mz, WALK_SPEED, 1, moved);
     if (a->body->grounded && !a->was_grounded) host_sound(SFX_LAND);
@@ -468,28 +491,40 @@ void room_tick(int16_t mx, int16_t mz, uint8_t jump)
     Actor *p;
     uint8_t i;
     R.clock++;
-    for (i = 0; i < R.nlift; i++) tick_lift(&R.lift[i]);
-    if (R.player >= 0) drive_player(&R.act[R.player], mx, mz, jump);
-    for (i = 0; i < R.nact; i++)
-        if (i != R.player) tick_actor(&R.act[i]);
+    /* port: pointers stepped through the arrays, not R.x[i] (cc65 multiplies) */
+    {
+        Lift *lf = R.lift;
+        for (i = 0; i < R.nlift; i++, lf++) tick_lift(lf);
+    }
+    if (R.player >= 0) drive_player(R.act + R.player, mx, mz, jump);
+    {
+        Actor *a = R.act;
+        for (i = 0; i < R.nact; i++, a++)
+            if (i != R.player) tick_actor(a);
+    }
     if (R.player < 0 || R.exited || !R.host) return;
-    p = &R.act[R.player];
+    p = R.act + R.player;
     body_box(p->body, &pb);
     if (check_exit()) return;
-    for (i = R.npk; i-- > 0;) {
-        Pickup k;
-        if (!box_overlap(&R.pk[i].box, &pb, 2)) continue;
-        k = R.pk[i];
-        R.pk[i] = R.pk[--R.npk];
-        host_pickup(k.kind, R.ridx, k.cell);
+    {
+        Pickup *pk = R.pk + R.npk;
+        for (i = R.npk; i-- > 0;) {
+            Pickup k;
+            --pk;
+            if (!box_overlap(&pk->box, &pb, 2)) continue;
+            k = *pk;
+            *pk = R.pk[--R.npk];
+            host_pickup(k.kind, R.ridx, k.cell);
+        }
     }
     if (R.has_throne && box_overlap(&R.throne, &pb, 2)) host_throne();
     if (R.ngate > 0) {
+        Gate *gt = R.gate;
         reach = pb;
         box_grow(&reach, 164);                                     /* 0.08 (328) */
-        for (i = 0; i < R.ngate; i++) {
+        for (i = 0; i < R.ngate; i++, gt++) {
             Box gb;
-            body_box(R.gate[i].body, &gb);
+            body_box(gt->body, &gb);
             if (box_overlap(&reach, &gb, 2) && host_try_key(R.ridx)) {
                 uint8_t k;
                 for (k = 0; k < R.ngate; k++) w_remove(R.gate[k].body);
@@ -502,10 +537,13 @@ void room_tick(int16_t mx, int16_t mz, uint8_t jump)
     if (p->invuln > 0) return;
     hurt = pb;
     box_shrink80(&hurt);
-    for (i = 0; i < R.nhaz; i++)
-        if (box_overlap(&hurt, &R.haz[i], 2)) { host_death("SPIKES"); return; }
+    {
+        Box *hz = R.haz;
+        for (i = 0; i < R.nhaz; i++, hz++)
+            if (box_overlap(&hurt, hz, 2)) { host_death("SPIKES"); return; }
+    }
     for (i = 0; i < R.nact; i++) {
-        Actor *a = &R.act[i];
+        Actor *a = R.act + i;
         if (a->kind < K_GUARD || a->kind > K_BOUNCER) continue;
         body_box(a->body, &ab);
         box_shrink80(&ab);
@@ -516,7 +554,7 @@ void room_tick(int16_t mx, int16_t mz, uint8_t jump)
     reach = pb;
     box_grow(&reach, 614);                                         /* 0.3 (1229) */
     for (i = 0; i < R.nact; i++) {
-        Actor *a = &R.act[i];
+        Actor *a = R.act + i;
         if (a->kind != K_SAGE) continue;
         body_box(a->body, &ab);
         if (box_overlap(&reach, &ab, 2) && R.clock - a->last_talk >= 200) {   /* 4 s */
