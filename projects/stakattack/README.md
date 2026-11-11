@@ -76,6 +76,12 @@ of the well, as the original's box covers its middle.
   shows COLPM0: the band covers it with background pixels, except one
   colour clock at the far left (GTIA 10's pixel delay), deep in the
   overscan.
+- In the screenshots, the thin copper line at the far left of the well's
+  rows is GTIA 10's border (it shows COLPM0, the walls' colour; the mode's
+  one-colour-clock delay uncovers 2 colour clocks of it), deep in the
+  overscan a TV crops; all nine GTIA 10 colours are in use, so there is no
+  spare to hide it with. The short lines in a column are the landing marks
+  of the falling piece, in its own colour.
 - No player/missile graphics: everything is characters, and the GTIA
   colours the players would use are the gems'.
 - **POKEY**: the original's MOD (`tools/stakattack.mod`, its lead and bass

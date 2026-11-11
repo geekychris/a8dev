@@ -75,6 +75,8 @@ static int16_t rz[MAX_OBJS];             /* units ahead of the car */
 static uint8_t cur;                      /* the object being looked at */
 static const RouteInfo *r;
 static int16_t cs;                       /* the car's segment */
+static int8_t plan_lane;                 /* what the plan was made for */
+static uint8_t plan_blind, plan_perf, plan_cyc;
 
 static int16_t iabs(int16_t x) { return x < 0 ? -x : x; }
 
@@ -663,6 +665,17 @@ static void ai_think(void)
 
     /* the plan: where it means to be at each of the next 16 segments (the
        old lane lines' offset added: it follows them) */
+    /* (made again only when it can change: a new segment, lane, the sun, a
+       cyclist near; the same plan as making it every step) */
+    hit = 0;
+    for (i = 0; i < MAX_OBJS; i++)
+        if (obj_type[i] == OBJ_CYCLIST && rz[i] >= -2 * SEG_LEN && rz[i] <= 8 * SEG_LEN) hit = 1;
+    if (!hit && w.ai.plan_from == cs && plan_lane == w.ai.lane && plan_blind == w.ai.blinded &&
+        plan_perf == perf && !plan_cyc) goto planned;
+    plan_lane = w.ai.lane;
+    plan_blind = w.ai.blinded;
+    plan_perf = perf;
+    plan_cyc = hit;
     w.ai.plan_from = cs;
     pd = lane_d(w.ai.lane);
     for (k = 0; k < 16; k++) {
@@ -687,6 +700,7 @@ static void ai_think(void)
             if (k >= 0 && k < 16 && iabs(w.ai.plan[k] - obj_d[i]) < F(34))
                 w.ai.plan[k] = obj_d[i] - F(34);
     }
+planned:
 
     /* the overpass shadow: something huge in the lane, it decides */
     if (!perf && w.ai.on && w.ai.phantom_timer == 0) {

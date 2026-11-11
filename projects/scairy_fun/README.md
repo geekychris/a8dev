@@ -12,7 +12,7 @@ insurance cover, and at zero the policy is cancelled.
 
 This is an **Atari edition**: the original's simulation is ~38K of 32-bit
 code and its renderer a polygon engine, far beyond a 1.77 MHz 6502, so both
-are cut down (below). It plays the same game at about 5 frames a second.
+are cut down (below). It plays the same game at about 5.5 frames a second.
 
 ![title](screenshots/title.png) ![the levee road](screenshots/play.png)
 ![the flood, by hand](screenshots/flood.png) ![the old lane lines](screenshots/ghost.png)
@@ -71,6 +71,16 @@ damage (2 a cone ... 40 for the river), the arrival bonus (autopilot % x 50
   rates are doubled, timers halved; speeds keep the original's units, so
   km/h and the autopilot's rules are unchanged), and collisions are swept
   (their window grows with the closing speed) so nothing is jumped over.
+  The takeover judging keeps its real-time meaning: whether a takeover
+  is a good catch depends on a failing hazard being within 24 segments
+  ahead (a distance, so the same at any step rate), and the catch is
+  judged when the car is 2 segments past it; the timers (the phantom
+  brake, the messages, the ambulance's patience, the end screens) are
+  halved in steps, the same in seconds. The host check
+  (`tools/simtest.c`) at 12.5 Hz fails in the same places as at 25: left
+  alone, the v1.0 autopilot aquaplanes at segment 108 and goes into the
+  river at 109 (the first flood), the tow truck brings the car back to
+  98; the perfect autopilot arrives at the marina and the office.
 - **10 objects, not 40**; traffic density scaled to them. Oncoming cars stop
   for the car in their way and pull over after a while, rather than
   queueing at a detour.
@@ -130,15 +140,23 @@ damage (2 a cone ... 40 for the river), the arrival bonus (autopilot % x 50
 
 - Runs on a 64K 800XL (the test boots it there); needs an XL/XE (the RAM
   under the OS ROM). No 130XE banks.
-- **About 5 frames a second** (PAL, release or harness build), the
-  simulation at 12.5 steps a second, measured over the Levee Road with the
-  autopilot driving. Profiled with run_to sampling; the first working
-  version drew 3.6 frames a second with the simulation falling behind (11
-  steps a second at 25 wanted). What got it here: the projection, the colour table and the rows in
-  asm, a quarter-squares multiply (a 32-bit C multiply took ~1,000 cycles),
-  the stripes as colours instead of pixels, rows redrawn only when they
-  move, line doubling in the near half, 16-bit maths in the simulation
-  (cc65's 32-bit divisions were a third of a step) and the 12.5 Hz steps.
+- **About 5.5 frames a second** (PAL; 5.3 in the loop's own timing), the
+  simulation at 12.5 steps a second, measured over the Levee Road with
+  the autopilot driving. A loop is ~280,000 cycles: the simulation's
+  2.5 steps ~100,000, the road's bands ~100,000, the projection ~34,000,
+  the camera ~15,000, the colours and sprites ~10,000 each, the HUD
+  5,000. Profiled with run_to sampling; the first working version drew
+  3.6 frames a second with the simulation falling behind (11 steps a
+  second at 25 wanted). What got it here: the projection, the colour
+  table and the rows in asm, a quarter-squares multiply (a 32-bit C
+  multiply took ~1,000 cycles), the stripes as colours instead of pixels,
+  rows redrawn only when they move, line doubling in the near half,
+  16-bit maths in the simulation (cc65's 32-bit divisions were a third of
+  a step), the 12.5 Hz steps, the autopilot's plan made again only when
+  it can change, and the HUD's numbers by subtraction.
+- **The screen's lower third is empty** on purpose: every row of road
+  costs drawing time (~1,000-3,000 cycles), so the view is 56 rows; a
+  taller road would be slower.
 
 ## Test
 
@@ -158,7 +176,7 @@ simulation on the host (`cc -Isrc tools/simtest.c src/world.c src/track.c`).
 
 ## Not done
 
-- The frame rate: ~5 fps is playable for a game of watching and taking
+- The frame rate: ~5.5 fps is playable for a game of watching and taking
   over, but choppy; the next steps would be the simulation in asm and
   fewer bands near the horizon.
 - The original's 3D models (here silhouettes), its painted skyline, the
