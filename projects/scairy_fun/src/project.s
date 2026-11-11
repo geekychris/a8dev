@@ -24,10 +24,8 @@ M_GHOST = $02
 M_PATH  = $04
 M_NOLINE = $08
 
-.segment "HIABSS"
-_ktab8: .res 513
-
 .segment "SCRBSS"
+_ktab8: .res 513
 _bseg:      .res NB * 2
 _pj_s0:     .res 2              ; the camera's segment
 _pj_nb:     .res 1              ; the first boundary to make (boundary 0: render.c)
@@ -49,7 +47,7 @@ pi:     .res 2
 mode:   .res 1
 t:      .res 2
 
-.segment "HIA"
+.segment "HIA2"
 side_near: .byte 0, 0, 0, 1, 0, 2, 0, 0
 side_far:  .byte 0, 3, 0, 1, 0, 0, 1, 3
 side_fw:   .byte 0, 3, 0, 0, 0, 1, 2, 2

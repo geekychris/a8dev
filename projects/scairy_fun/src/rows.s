@@ -553,7 +553,7 @@ none:   lda #$FF
         ldx #E_RF*2
         PX
         sta desc+5
-        ldx #E_LW               ; marks 1 + lw/16 pixels wide, the path 1 + lw/8
+        ldx #E_LW*2               ; marks 1 + lw/16 pixels wide, the path 1 + lw/8
         PX
         sta lwpx
         lsr a
@@ -571,7 +571,7 @@ none:   lda #$FF
         lda #0
         sta desc+11
         jmp @m1
-@m0:    ldx #E_M0
+@m0:    ldx #E_M0*2
         ldy #10
         jsr mark
 @m1:    lda mode
@@ -582,7 +582,7 @@ none:   lda #$FF
         lda #0
         sta desc+13
         jmp @m2
-@m1y:   ldx #E_M1
+@m1y:   ldx #E_M1*2
         ldy #12
         jsr mark
 @m2:    lda mode

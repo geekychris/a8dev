@@ -1,11 +1,12 @@
 ; ScAIry Fun - loading the code that runs under the OS ROM (scairy_fun.cfg).
-; Each chunk (HIA, HIB) is a segment of the program file loaded at $A000;
+; Each chunk (HIA, HIA2, HIB) is a segment of the program file loaded at $A000;
 ; the INIT entry after it calls stage_copy, which switches the ROM off for
 ; a moment (interrupts off), copies the chunk to its place and switches the
 ; ROM back on for the loader.
 
         .export stage_copy
         .import __HIA_LOAD__, __HIA_RUN__, __HIA_SIZE__
+        .import __HIA2_LOAD__, __HIA2_RUN__, __HIA2_SIZE__
         .import __HIB_LOAD__, __HIB_RUN__, __HIB_SIZE__
         .importzp ptr1, ptr2
 
@@ -17,6 +18,10 @@ INITAD  = $02E2
         .word __HIA_LOAD__, __HIA_LOAD__ + __HIA_SIZE__ - 1
 .segment "HIAINIT"
         .word INITAD, INITAD + 1, stage_copy
+.segment "HIA2HDR"
+        .word __HIA2_LOAD__, __HIA2_LOAD__ + __HIA2_SIZE__ - 1
+.segment "HIA2INIT"
+        .word INITAD, INITAD + 1, stage_copy
 .segment "HIBHDR"
         .word __HIB_LOAD__, __HIB_LOAD__ + __HIB_SIZE__ - 1
 .segment "HIBINIT"
@@ -26,9 +31,9 @@ INITAD  = $02E2
 chunk:  .byte 0
 
 .segment "LOWCODE"
-dst_lo: .byte <__HIA_RUN__, <__HIB_RUN__
-dst_hi: .byte >__HIA_RUN__, >__HIB_RUN__
-pages:  .byte >(__HIA_SIZE__ + 255), >(__HIB_SIZE__ + 255)
+dst_lo: .byte <__HIA_RUN__, <__HIA2_RUN__, <__HIB_RUN__
+dst_hi: .byte >__HIA_RUN__, >__HIA2_RUN__, >__HIB_RUN__
+pages:  .byte >(__HIA_SIZE__ + 255), >(__HIA2_SIZE__ + 255), >(__HIB_SIZE__ + 255)
 
 .proc stage_copy
         ldx chunk

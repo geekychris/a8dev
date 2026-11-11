@@ -8,3 +8,6 @@ include $(A8_SDK)/project.mk
 # their segment arrays in LOWRAM
 $(OBJDIR)/render.c.o: EXTRA_CFLAGS += --code-name HIA --rodata-name HIA --data-name HIA --bss-name SCRBSS
 $(OBJDIR)/track.c.o: EXTRA_CFLAGS += --code-name HIB --rodata-name HIB --data-name HIB --bss-name LOWRAM
+$(OBJDIR)/sprites.c.o: EXTRA_CFLAGS += --code-name HIA2 --rodata-name HIA2 --data-name HIA2 --bss-name SCRBSS
+# the simulation and the front end: optimised for size (-Ors: ~10% smaller)
+$(OBJDIR)/world.c.o $(OBJDIR)/main.c.o: OPT = -Ors -g

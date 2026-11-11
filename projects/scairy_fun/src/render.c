@@ -80,10 +80,15 @@ static uint8_t dl_set[2][24], dl_nset[2];   /* the rows given DLIs last time, pe
 
 /* what's beside the road: colours (far, near) and the near strip's width */
 
+extern uint8_t _SCRBSS_LOAD__[], _SCRBSS_SIZE__[];  /* (scairy_fun.cfg) */
+
 void render_init(void)
 {
     static uint16_t i, k16;
     static uint8_t *p, r, k;
+    /* the renderer's and sprites' variables are outside the C runtime's BSS:
+       zero them first */
+    memset(_SCRBSS_LOAD__, 0, (uint16_t)_SCRBSS_SIZE__);
     for (i = 1; i <= 512; ++i) {
         k16 = (uint16_t)(11520U / i) >> 3;        /* 45 * 256 / (i * 8) */
         ktab8[i] = k16 > 255 ? 255 : (uint8_t)k16;
