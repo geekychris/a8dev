@@ -93,6 +93,13 @@ average** (`ld: fps10=` in the log; the test prints them). A frame is the
 ground's grid projected (~45K cycles), 20 cells filled (~80K), the pads,
 the clear, the sprites and the HUD.
 
+The controls don't wait for the picture: between the ground's rows (7
+times a frame) the game reads the stick, runs the physics steps that are
+due and redraws the craft's sprites (its lean and the flame), so the craft
+answers the stick at about 25 updates a second while the ground follows at
+5. FIRE to a flame on the screen: 4-7 frames (80-140 ms), from 8-18 before
+(measured in the emulator, 8 presses).
+
 Profiling (projects/a8_3d/tools/profile.py and breakpoint timing of each
 function) moved, in turn: the ground's height to asm (4.5K -> 1.6K cycles a
 call), the 32-bit integration to asm, the grid's projection to asm, the
@@ -112,9 +119,9 @@ locals static, so the stack only holds call arguments).
 
 | | debug build | `RELEASE=1` |
 |---|---|---|
-| program `$2000-` | `$916F` | `$8C98` |
-| free below the stack (`$9600`) | 1.1K | 2.4K |
-| LOWRAM `$0C00-` | `$1E3E` (4.6K of 5K) | |
+| program `$2000-` | `$9245` | `$8D6E` |
+| free below the stack (`$9600`) | 0.9K | 2.1K |
+| LOWRAM `$0C00-` | `$1E41` (4.6K of 5K) | |
 | screen | `$A010-$A6EF` / `$B010-$B6EF` (44 lines each), display lists at `$A800` / `$B800`, text rows `$AF80` | |
 
 ## Testing

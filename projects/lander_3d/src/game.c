@@ -303,9 +303,43 @@ static void step(void)
     }
 }
 
+/* the steps due by the clock (12.5 a second, up to 3 behind); mid-draw
+   (between the ground's rows) only while playing, so a new level is never
+   made under the drawing */
+static uint8_t rt_last;
+static uint16_t ms;
+static void catch_up(uint8_t mid)
+{
+    uint8_t n = (uint8_t)(RTCLOK2 - rt_last);
+    rt_last += n;
+    ms += n * (frame_is_pal() ? 20 : 17);
+    if (ms > 240) ms = 240;
+    while (ms >= 80) {
+        if (mid && (state != GS_PLAY || paused)) break;
+        ms -= 80;
+        step();
+    }
+}
+
+/* port: called by view.c between the ground's rows, so the controls, the
+   physics and the craft's sprites keep up while a frame is drawn */
+void ld_service(void)
+{
+    uint8_t held;
+    if (state != GS_PLAY) return;
+    if (!autopilot) {
+        held = in_held;
+        in.pitch = (held & IN_UP) ? 1 : (held & IN_DOWN) ? -1 : 0;
+        in.roll = (held & IN_LEFT) ? 1 : (held & IN_RIGHT) ? -1 : 0;
+        in.throttle = (held & IN_FIRE) ? 255 : (uint8_t)(steady * 25 + (steady == 10 ? 5 : 0));
+    }
+    catch_up(1);
+    view_sprites(L.outcome ? 0 : L.throttle);
+}
+
 int main(void)
 {
-    uint8_t n, ms = 0, y;
+    uint8_t y;
     uint16_t frames = 0, fps_t0 = 0;
 
     a3d_double = 1;
@@ -319,16 +353,12 @@ int main(void)
     in_install();
     frame_init();
     to_title();
+    rt_last = RTCLOK2;
     lg("ld: ready"); lg_end();
     for (;;) {
         input();
-        n = a3d_sync();
-        ms += n * (frame_is_pal() ? 20 : 17);
-        if (ms > 240) ms = 240;
-        while (ms >= 80) {                                      /* 12.5 steps a second */
-            ms -= 80;
-            step();
-        }
+        a3d_sync();
+        catch_up(0);                                            /* 12.5 steps a second */
         sound_frame();
         view_draw();
         view_sprites(L.outcome ? 0 : L.throttle);
