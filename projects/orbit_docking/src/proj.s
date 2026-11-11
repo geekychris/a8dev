@@ -9,7 +9,7 @@
 ; Two products a corner, each two 8 x 8 from a3d's quarter-square tables.
         .importzp a3d_m, a3d_p, a3d_bsel
         .import   _ell_w, _a3d_ylo, _a3d_yhi, _a3d_pat_e, _a3d_pat_o
-        .import   _a3d_sin8, _mv_a, _mv_plane, _cls_v0, _cls_plane, mulset_u
+        .import   _a3d_sin8, _mv_a, _mv_plane, _cls_v0, _cls_half, _cls_plane, mulset_u
         .export   _pl_phi, _pj_ncls, _pl_cx, _pl_cy, _cr_x, _cr_y, _pv_x, _pv_y, _proj_all
         .include  "a3d_mul.inc"
 
@@ -43,6 +43,10 @@ p1:     .res 1
 p2:     .res 1
 rl:     .res 1
 rh:     .res 1
+hh:     .res 1                          ; corners mirrored (cls_half)
+vm:     .res 1
+b2l:    .res 1
+b2h:    .res 1
 
 .segment "ZEROPAGE"
 dst:    .res 2
@@ -102,8 +106,14 @@ _proj_all:
         tya
         asl     a
         sta     pp
-        lda     _cls_v0+1,x
-        sta     vend
+        lda     _cls_half,x             ; pairs half a turn apart: the first
+        sta     hh                      ; half worked out, the rest mirrored
+        beq     :+
+        clc
+        adc     _cls_v0,x
+        bne     :++
+:       lda     _cls_v0+1,x
+:       sta     vend
         txa
         asl     a
         sta     cc
@@ -125,6 +135,7 @@ _proj_all:
         lda     _pl_cx+1,y
         sta     bh
         jsr     axis
+        jsr     mirror
         ; ---- y: pl_cy - r sin
         lda     #0
         sta     aofs
@@ -143,12 +154,52 @@ _proj_all:
         lda     _pl_cy+1,y
         sta     bh
         jsr     axis
+        jsr     mirror
 @nextc: inc     cls
         lda     cls
         cmp     _pj_ncls
         bcs     :+
         jmp     @cls
 :       rts
+
+; the mirrored half: dst[v + hh] = 2 (bh:bl) - dst[v] (the corner half a turn round)
+mirror: lda     hh
+        beq     @done
+        lda     bl
+        asl     a
+        sta     b2l
+        lda     bh
+        rol     a
+        sta     b2h
+        ldx     cls
+        lda     _cls_v0,x
+        sta     vm
+@m:     lda     vm
+        asl     a
+        tay
+        sec
+        lda     b2l
+        sbc     (dst),y
+        tax
+        iny
+        lda     b2h
+        sbc     (dst),y
+        pha
+        lda     vm                      ; the partner
+        clc
+        adc     hh
+        asl     a
+        tay
+        txa
+        sta     (dst),y
+        iny
+        pla
+        sta     (dst),y
+        inc     vm
+        lda     vm
+        cmp     vend
+        bcc     @m
+@done:  rts
 
 ; the class's corners on one axis: dst[v] = (bh:bl) - (rh:rl) * sin(a + aofs) / 128
 axis:   ldx     cls

@@ -138,7 +138,18 @@ def main():
     # the corners grouped by radius class (plane, radius), so proj.s sets the
     # multiplier once a class
     classes = sorted({(p, r) for p, r, _ in verts})
-    order = sorted(range(len(verts)), key=lambda i: (classes.index(verts[i][:2]), i))
+    # a class whose corners come in pairs half a turn apart (most of the
+    # station): the first half listed, then their partners in the same order;
+    # proj.s works out the first half and mirrors the rest through the axis
+    def halfturn(c):
+        angs = sorted(a for p, r, a in verts if (p, r) == c)
+        return len(angs) % 2 == 0 and all((a + 128) & 255 in angs for a in angs)
+    sym = {c: halfturn(c) for c in classes}
+    def key(i):
+        p, r, a = verts[i]
+        c = classes.index((p, r))
+        return (c, a >> 7, a & 127) if sym[(p, r)] else (c, 0, i)
+    order = sorted(range(len(verts)), key=key)
     new = {old: n for n, old in enumerate(order)}
     verts[:] = [verts[i] for i in order]
     polys[:] = [([new[i] for i in idx], name) for idx, name in polys]
@@ -159,6 +170,8 @@ def main():
     starts = [min(i for i, v in enumerate(verts) if v[:2] == c) for c in classes] + [len(verts)]
     out.append("/* the corners of class c: cls_v0[c] .. cls_v0[c+1]-1 */")
     out.append("const uint8_t cls_v0[NCLS + 1] = {" + ", ".join(map(str, starts)) + "};")
+    out.append("/* the corners worked out (the rest mirrored half a turn round), 0: all */")
+    out.append("const uint8_t cls_half[NCLS] = {" + ", ".join(str((starts[k + 1] - starts[k]) // 2 if sym[c] else 0) for k, c in enumerate(classes)) + "};")
     out.append("const uint8_t mv_cls[NVERTS] = {" + ", ".join(str(classes.index((p, r))) for p, r, _ in verts) + "};")
     out.append("const uint8_t cls_plane[NCLS] = {" + ", ".join(str(p) for p, _ in classes) + "};")
     out.append("const int16_t cls_r[NCLS] = {" + ", ".join(str(r) for _, r in classes) + "};")
