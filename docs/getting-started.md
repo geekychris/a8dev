@@ -11,9 +11,19 @@ colima or docker-ce). SDL2 gives the emulator a window (`brew install sdl2`
 
 ```sh
 git clone https://github.com/geekychris/a8dev.git && cd a8dev
+./a8 doctor         # what's missing, a fix for each, and one install command for all of it
 ./a8 setup          # toolchain image, Atari800 (patched), .venv, then selftest
-./a8 doctor         # what's missing, with a fix for each problem
 ```
+
+`./a8 doctor` knows Homebrew, apt (Debian/Ubuntu), dnf (Fedora), pacman
+(Arch) and zypper (openSUSE). Typical fresh machines:
+
+| Host | System packages |
+|---|---|
+| macOS | `xcode-select --install; brew install autoconf automake sdl2` + a Docker engine |
+| Debian/Ubuntu | `sudo apt-get install -y git build-essential autoconf automake zlib1g-dev python3 python3-venv libsdl2-dev` + docker-ce (`sudo usermod -aG docker $USER`) |
+| Fedora | `sudo dnf install -y git make gcc autoconf automake zlib-devel python3 SDL2-devel` + docker |
+| Windows | `wsl --install -d Ubuntu`, then the Ubuntu line inside WSL; Docker Desktop with WSL integration for this distro (or docker-ce in WSL). The window needs WSLg (Windows 11). |
 
 No Atari ROMs are needed: Atari800 has AltirraOS (a free OS and BASIC
 replacement) built in.
