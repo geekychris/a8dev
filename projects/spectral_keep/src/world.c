@@ -108,6 +108,7 @@ void box_of(void);
 void body_box(const Body *b, Box *o) { bx_body = b; bx_box = o; box_of(); }
 #endif
 
+#ifdef HOST                                 /* (boxes.s on the Atari) */
 uint8_t box_overlap(const Box *a, const Box *b, fix eps)
 {
     return a->x0 < b->x1 - eps && a->x1 > b->x0 + eps &&
@@ -115,6 +116,7 @@ uint8_t box_overlap(const Box *a, const Box *b, fix eps)
            a->z0 < b->z1 - eps && a->z1 > b->z0 + eps;
 }
 
+#ifdef HOST                                 /* (boxes.s on the Atari) */
 /* box_shrink(b, 80): scale about the centre to 80% */
 void box_shrink80(Box *b)
 {
@@ -128,6 +130,10 @@ void box_shrink80(Box *b)
     b->y0 = cy - hy; b->y1 = cy + hy;
     b->z0 = cz - hz; b->z1 = cz + hz;
 }
+
+#endif
+
+#endif
 
 void box_grow(Box *b, fix g)
 {

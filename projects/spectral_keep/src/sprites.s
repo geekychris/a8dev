@@ -70,7 +70,7 @@ interp: lda     sf
         bcs     @to
         cmp     #0
         beq     @from
-        ; d = to - from (signed 9 bits in t16)
+        ; d = to - from (signed 9 bits: t16)
         sec
         lda     t_to
         sbc     t_from
@@ -78,36 +78,41 @@ interp: lda     sf
         lda     #0
         sbc     #0
         sta     t16+1           ; (0 or $FF)
+        ; d * f / 4: f 1: d / 4, 2: d / 2, 3: d - d / 4
+        lda     sf
+        cmp     #2
+        beq     @half
+        jsr     quarter         ; A = d / 4 (low byte)
         ldx     sf
-@m:     ; d * f: add d sf times into acc
-        lda     #0
-        sta     acc
-        sta     acc+1
+        cpx     #1
+        beq     @add
+        sta     acc             ; f = 3: d - d / 4
+        lda     t16
+        sec
+        sbc     acc
 @add:   clc
-        lda     acc
-        adc     t16
-        sta     acc
-        lda     acc+1
-        adc     t16+1
-        sta     acc+1
-        dex
-        bne     @add
-        ; / 4 (arithmetic)
-        lda     acc+1
-        cmp     #$80
-        ror     acc+1
-        ror     acc
-        lda     acc+1
-        cmp     #$80
-        ror     acc+1
-        ror     acc
-        clc
-        lda     t_from
-        adc     acc
+        adc     t_from
         rts
+@half:  lda     t16+1
+        cmp     #$80
+        lda     t16
+        ror
+        jmp     @add
 @to:    lda     t_to
         rts
 @from:  lda     t_from
+        rts
+quarter:
+        lda     t16+1
+        cmp     #$80
+        ror     t16+1
+        lda     t16
+        ror
+        sta     acc
+        lda     t16+1
+        cmp     #$80
+        lda     acc
+        ror
         rts
 
 .segment "SCRBSS"
@@ -262,3 +267,116 @@ src     = $F0                   ; (zero page: free with the OS ROM off)
 
 .segment "SCRBSS"
 cnt:    .res 1
+
+; void frame_copy(void): character frame fc_frame (bank 2, _gfx_frames: h,
+; x offset, y offset, double width, rows) into _spr_rows[fc_set][fc_p]
+; (and [fc_p + 1], de-interleaved, when fc_multi: the explorer). Its
+; header into fc_h, fc_xo, fc_yo, fc_dbl.
+        .export _frame_copy, _fc_frame, _fc_set, _fc_p, _fc_multi, _fc_h, _fc_xo, _fc_yo, _fc_dbl
+        .import _gfx_frames, _bank_select
+        .importzp ptr1, ptr2, ptr3
+
+.segment "SCRBSS"
+_fc_frame: .res 1
+_fc_set:   .res 1
+_fc_p:     .res 1
+_fc_multi: .res 1
+_fc_h:     .res 1
+_fc_xo:    .res 1
+_fc_yo:    .res 1
+_fc_dbl:   .res 1
+
+.segment "XCODE1"
+_frame_copy:
+        lda     #2
+        jsr     _bank_select
+        lda     _fc_frame
+        asl
+        tax
+        lda     _gfx_frames,x
+        sta     ptr1
+        lda     _gfx_frames+1,x
+        sta     ptr1+1
+        ldy     #0
+        lda     (ptr1),y
+        cmp     #MAXH
+        bcc     :+
+        lda     #MAXH
+:       sta     _fc_h
+        iny
+        lda     (ptr1),y
+        sta     _fc_xo
+        iny
+        lda     (ptr1),y
+        sta     _fc_yo
+        iny
+        lda     (ptr1),y
+        sta     _fc_dbl
+        ; the destination: _spr_rows + set * 192 + p * 48
+        lda     #<_spr_rows
+        sta     ptr2
+        lda     #>_spr_rows
+        sta     ptr2+1
+        lda     _fc_set
+        beq     :+
+        clc
+        lda     ptr2
+        adc     #192
+        sta     ptr2
+        bcc     :+
+        inc     ptr2+1
+:       ldx     _fc_p
+        beq     @dst
+@px:    clc
+        lda     ptr2
+        adc     #MAXH
+        sta     ptr2
+        bcc     :+
+        inc     ptr2+1
+:       dex
+        bne     @px
+@dst:   clc                     ; ptr3 = the next player's rows
+        lda     ptr2
+        adc     #MAXH
+        sta     ptr3
+        lda     ptr2+1
+        adc     #0
+        sta     ptr3+1
+        clc                     ; the source rows: + 4
+        lda     ptr1
+        adc     #4
+        sta     ptr1
+        bcc     :+
+        inc     ptr1+1
+:       ldx     _fc_h
+        beq     @done
+        lda     _fc_multi
+        bne     @multi
+        ldy     #0
+@c1:    lda     (ptr1),y
+        sta     (ptr2),y
+        iny
+        dex
+        bne     @c1
+        beq     @done
+@multi: ldy     #0              ; rows of (P0, P1): Y the row, the source + 2 a row
+@c2:    sty     fc_row
+        tya
+        asl
+        tay
+        lda     (ptr1),y
+        pha
+        iny
+        lda     (ptr1),y
+        ldy     fc_row
+        sta     (ptr3),y
+        pla
+        sta     (ptr2),y
+        iny
+        dex
+        bne     @c2
+@done:  lda     #$FF
+        jmp     _bank_select
+
+.segment "SCRBSS"
+fc_row: .res 1

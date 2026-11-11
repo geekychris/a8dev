@@ -47,6 +47,8 @@ void disp_install(void);
 extern uint8_t spr_rows[2][4][48], spr_h[2][4], spr_x0[2][4], spr_x1[2][4], spr_y0[2][4], spr_y1[2][4];
 extern uint8_t spr_size[2][4], spr_flip, spr_set, spr_shown_x[4], spr_shown_y[4];
 void spr_reset(void);
+extern uint8_t fc_frame, fc_set, fc_p, fc_multi, fc_h, fc_xo, fc_yo, fc_dbl;
+void frame_copy(void);
 /* the banks' tables (gfx_data.s) */
 extern uint8_t gfx_rooms[], gfx_frames[], gfx_bmp[];
 
@@ -270,23 +272,19 @@ static int8_t fr_xo[2][4], fr_yo[2][4];
 
 static void put_frame(uint8_t s, uint8_t p, uint8_t frame, int16_t sx, int16_t sy, uint8_t multi, uint8_t snap)
 {
-    uint8_t ptr[2], h, i, hp, fbuf[4 + 2 * 48];   /* (on the C stack: outside the bank window) */
+    uint8_t h, hp;
     int16_t x, y;
     if (set_frame[s][p] != frame) {
         set_frame[s][p] = frame;
-        xe_bank_read(2, BANKOFF(gfx_frames) + frame * 2, ptr, 2);
-        xe_bank_read(2, (uint16_t)ptr[0] + ((uint16_t)ptr[1] << 8) - 0x4000, fbuf, 4 + (multi + 1) * 48);
-        h = fbuf[0];
-        if (h > 48) h = 48;
-        fr_h[s][p] = h;
-        fr_xo[s][p] = (int8_t)fbuf[1];
-        fr_yo[s][p] = (int8_t)fbuf[2];
-        spr_size[s][p] = spr_size[s][p + multi] = fbuf[3] ? 1 : 0;
-        if (multi) {
-            uint8_t *d0 = spr_rows[s][p], *d1 = spr_rows[s][p + 1], *f = fbuf + 4;
-            for (i = 0; i < h; ++i) { *d0++ = *f++; *d1++ = *f++; }
-        } else
-            memcpy(spr_rows[s][p], fbuf + 4, h);
+        fc_frame = frame;
+        fc_set = s;
+        fc_p = p;
+        fc_multi = multi;
+        frame_copy();
+        fr_h[s][p] = fc_h;
+        fr_xo[s][p] = (int8_t)fc_xo;
+        fr_yo[s][p] = (int8_t)fc_yo;
+        spr_size[s][p] = spr_size[s][p + multi] = fc_dbl ? 1 : 0;
     }
     h = fr_h[s][p];
     x = 48 + sx + fr_xo[s][p];
@@ -346,7 +344,7 @@ static char *num(char *p, int16_t v)
     return p;
 }
 
-static uint8_t hud_msg;
+static uint8_t hud_msg, hud_state = 0xFF;
 static int8_t hud_l = -1, hud_k = -1, hud_r = -1;
 static const KRoom *hud_room;
 
@@ -354,12 +352,24 @@ void view_hud(uint8_t force)
 {
     char b[41], *p;
     uint8_t vis = G.clock < G.msg_until && G.message[0];   /* (game_message_visible is in bank 0) */
-    if (force || G.lives != hud_l || G.keys != hud_k || G.relics != hud_r || R.room != hud_room) {
-        hud_l = G.lives; hud_k = G.keys; hud_r = G.relics; hud_room = R.room;
+    if (force || G.lives != hud_l || G.keys != hud_k || G.relics != hud_r || R.room != hud_room ||
+        G.state != hud_state) {
+        hud_l = G.lives; hud_k = G.keys; hud_r = G.relics; hud_room = R.room; hud_state = G.state;
         memset(HUD, 0, 40);
         if (G.state == GS_TITLE) {
             hud_put(0, 0, "SPECTRAL KEEP");
             hud_put(0, 40 - (uint8_t)strlen(G.level->name), G.level->name);
+        } else if (G.state == GS_GAMEOVER || G.state == GS_VICTORY) {
+            /* the original's end: relics found, rooms explored */
+            p = b;
+            p = num(p, G.relics);
+            memcpy(p, " RELICS  ", 9); p += 9;
+            p = num(p, G.nvisited);
+            *p++ = '/';
+            p = num(p, G.level->nrooms);
+            memcpy(p, " ROOMS", 7);
+            hud_put(0, 0, G.state == GS_VICTORY ? "VICTORY!" : "GAME OVER");
+            hud_put(0, (uint8_t)(40 - strlen(b)), b);
         } else {
             hud_put(0, 0, R.room->name);
             p = b;
@@ -380,6 +390,7 @@ void view_hud(uint8_t force)
         hud_msg = vis;
         memset(HUD + 40, 0, 40);
         if (G.state == GS_TITLE) hud_put(1, 0, "FIRE: ENTER   UP/DOWN: CHOOSE A KEEP");
+        else if (G.state == GS_GAMEOVER || G.state == GS_VICTORY) hud_put(1, 12, "FIRE: THE TITLE");
         else if (vis) hud_put(1, (uint8_t)(strlen(G.message) < 40 ? (40 - strlen(G.message)) / 2 : 0), G.message);
     }
 }

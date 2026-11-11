@@ -7,6 +7,7 @@
 ;
 ; A Body starts px py pz sx sy sz (fix); a Box is x0 y0 z0 x1 y1 z1.
 
+        .macpack longbranch
         .export _box_of, _axis_prep, _bx_body, _bx_box
         .import _cs_start, _cs_swept, _cs_axis, _cs_d
         .importzp ptr1, ptr2
@@ -120,3 +121,185 @@ _axis_prep:
 .segment "BSS"
 t_lo:   .res 1
 t_hi:   .res 1
+
+; uint8_t box_overlap(const Box *a, const Box *b, fix eps)   (world.c's, in asm:
+; the hazards' loop calls it up to 42 times a step)
+;   a.lo < b.hi - eps && a.hi > b.lo + eps on each axis
+        .export _box_overlap, _box_shrink80
+        .import popax
+
+.segment "BSS"
+eps:    .res 2
+tq:     .res 2
+k:      .res 1
+
+.segment "HICODE"
+_box_overlap:
+        sta     eps
+        stx     eps+1
+        jsr     popax           ; b
+        sta     ptr2
+        stx     ptr2+1
+        jsr     popax           ; a
+        sta     ptr1
+        stx     ptr1+1
+        ldy     #0
+@axis:  sty     k
+        ; tq = b.hi - eps
+        tya
+        clc
+        adc     #6
+        tay
+        sec
+        lda     (ptr2),y
+        sbc     eps
+        sta     tq
+        iny
+        lda     (ptr2),y
+        sbc     eps+1
+        sta     tq+1
+        ; a.lo < tq ?
+        ldy     k
+        sec
+        lda     (ptr1),y
+        sbc     tq
+        iny
+        lda     (ptr1),y
+        sbc     tq+1
+        bvc     :+
+        eor     #$80
+:       bpl     @no             ; a.lo >= tq
+        ; tq = b.lo + eps
+        ldy     k
+        clc
+        lda     (ptr2),y
+        adc     eps
+        sta     tq
+        iny
+        lda     (ptr2),y
+        adc     eps+1
+        sta     tq+1
+        ; tq < a.hi ?
+        lda     k
+        clc
+        adc     #6
+        tay
+        sec
+        lda     tq
+        sbc     (ptr1),y
+        iny
+        lda     tq+1
+        sbc     (ptr1),y
+        bvc     :+
+        eor     #$80
+:       bpl     @no             ; tq >= a.hi
+        ldy     k
+        iny
+        iny
+        cpy     #6
+        bne     @axis
+        lda     #1
+        ldx     #0
+        rts
+@no:    lda     #0
+        tax
+        rts
+
+; void box_shrink80(Box *b): about its centre to 0.4 w each side
+; (w / 4 + w / 8 + w / 64 + w / 128, as world.c)
+_box_shrink80:
+        sta     ptr1
+        stx     ptr1+1
+        ldy     #0
+@ax:    sty     k
+        ; w = hi - lo (unsigned)
+        tya
+        clc
+        adc     #6
+        tay
+        sec
+        lda     (ptr1),y
+        ldy     k
+        sbc     (ptr1),y
+        sta     w
+        lda     k
+        clc
+        adc     #7
+        tay
+        lda     (ptr1),y
+        ldy     k
+        iny
+        sbc     (ptr1),y
+        sta     w+1
+        ; c = lo + w / 2
+        lda     w+1
+        lsr
+        sta     cc+1
+        lda     w
+        ror
+        ldy     k
+        clc
+        adc     (ptr1),y
+        sta     cc
+        iny
+        lda     cc+1
+        adc     (ptr1),y
+        sta     cc+1
+        ; hh = w>>2 + w>>3 + w>>6 + w>>7: shift w right, adding at 2, 3, 6, 7
+        lda     #0
+        sta     hh
+        sta     hh+1
+        ldx     #1
+@sh:    lsr     w+1
+        ror     w
+        cpx     #2
+        beq     @addw
+        cpx     #3
+        beq     @addw
+        cpx     #6
+        beq     @addw
+        cpx     #7
+        bne     @nx
+@addw:  clc
+        lda     hh
+        adc     w
+        sta     hh
+        lda     hh+1
+        adc     w+1
+        sta     hh+1
+@nx:    inx
+        cpx     #8
+        bne     @sh
+        ; lo = c - hh, hi = c + hh
+        ldy     k
+        sec
+        lda     cc
+        sbc     hh
+        sta     (ptr1),y
+        iny
+        lda     cc+1
+        sbc     hh+1
+        sta     (ptr1),y
+        lda     k
+        clc
+        adc     #6
+        tay
+        clc
+        lda     cc
+        adc     hh
+        sta     (ptr1),y
+        iny
+        lda     cc+1
+        adc     hh+1
+        sta     (ptr1),y
+        ldy     k
+        iny
+        iny
+        cpy     #6
+        jne     @ax
+        rts
+
+.segment "BSS"
+w:      .res 2
+cc:     .res 2
+hh:     .res 2

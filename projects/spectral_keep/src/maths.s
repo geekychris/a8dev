@@ -21,11 +21,57 @@ rt:     .res 4
 
 .segment "HICODE"
 
-; prod = mA * mB (unsigned 16 x 16)
-umul:   lda     #0
+; prod = mA * mB (unsigned 16 x 16). port: the smaller as the multiplier,
+; and 8 rounds, not 16, when it fits a byte (most calls: a speed or a
+; direction times a small constant)
+umul:   lda     mB+1
+        cmp     mA+1
+        bcc     @ok             ; mB < mA (by the high bytes)
+        bne     @swap
+        lda     mB
+        cmp     mA
+        bcc     @ok
+@swap:  ldx     mA
+        ldy     mA+1
+        lda     mB
+        sta     mA
+        lda     mB+1
+        sta     mA+1
+        stx     mB
+        sty     mB+1
+@ok:    lda     #0
         sta     prod+2
         sta     prod+3
-        ldx     #16
+        ldx     mB+1
+        bne     @full
+        ; mB < 256: 8 rounds; the product comes out in prod+1..3, then shifted down
+        sta     prod
+        sta     prod+1
+        ldx     #8
+@l8:    lsr     mB
+        bcc     @n8
+        clc
+        lda     prod+2
+        adc     mA
+        sta     prod+2
+        lda     prod+3
+        adc     mA+1
+        sta     prod+3
+@n8:    ror     prod+3
+        ror     prod+2
+        ror     prod+1
+        dex
+        bne     @l8
+        lda     prod+1          ; (prod+1..3) is the 24-bit product: down a byte
+        sta     prod
+        lda     prod+2
+        sta     prod+1
+        lda     prod+3
+        sta     prod+2
+        lda     #0
+        sta     prod+3
+        rts
+@full:  ldx     #16
 @l:     lsr     mB+1
         ror     mB
         bcc     @n

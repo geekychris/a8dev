@@ -4,7 +4,8 @@
 ; In LOWCODE: it runs whatever bank is mapped.
 
         .export _dli_c0, _dli_c1, _dli_c2, _disp_install
-        .import _spr_vbi
+        .import _spr_vbi, _sound_tick
+        .importzp ptr1, tmp1, tmp2
 
 WSYNC   = $D40A
 COLPF0  = $D016
@@ -41,6 +42,24 @@ dli:    pha
 
 vbi:    lda     #0
         sta     idx
+        ; the SDK's sound player, every frame (it uses ptr1, tmp1, tmp2: kept)
+        lda     ptr1
+        pha
+        lda     ptr1+1
+        pha
+        lda     tmp1
+        pha
+        lda     tmp2
+        pha
+        jsr     _sound_tick
+        pla
+        sta     tmp2
+        pla
+        sta     tmp1
+        pla
+        sta     ptr1+1
+        pla
+        sta     ptr1
         jmp     _spr_vbi
 
 ; void disp_install(void)
