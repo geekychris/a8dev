@@ -95,7 +95,8 @@ COMPLETE, back to the editor), a game from level 4 where the runner takes
 the gold beside him each life until the guard catches him (five lives, game
 over, initials BOT, the table), level 121's five guards, the session
 recorded and replayed twice (every frame hash), and the XEX on a 64K 800XL.
-The test writes the screenshots and the GIF.
+`.venv/bin/python projects/bullion_dash/test.py --shots`
+rewrites the screenshots and the GIF.
 
 ## Not done
 

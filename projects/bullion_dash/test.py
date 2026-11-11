@@ -11,7 +11,7 @@
 3. Level 121 has five guards: the fourth and fifth are missiles.
 The session is recorded and replayed twice (every frame hash must match),
 and the XEX runs on a 64K 800XL (the levels load at $A000 behind a
-BASIC-off segment). Screenshots go to screenshots/.
+BASIC-off segment). Screenshots go to screenshots/ with --shots (build/shots otherwise).
 """
 import re
 import struct
@@ -25,7 +25,10 @@ from a8dev.emu import Emulator  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 PROG = HERE / "build" / "bullion_dash.xex"
-SHOTS = HERE / "screenshots"
+# the README's pictures are written with --shots; a plain run (selftest)
+# leaves them alone and writes its pictures under build/
+SHOTS = HERE / "screenshots" if "--shots" in sys.argv else HERE / "build" / "shots"
+SHOTS.mkdir(parents=True, exist_ok=True)
 REC = HERE / "build" / "bot-game.json"
 failures = []
 GS_PLAYER = 15                     # GameState: state, level, score, lives, gold x2, frame (cc65 packs)

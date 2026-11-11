@@ -108,7 +108,8 @@ are lost and the game ends. It enters BOT in the high-score table and
 returns to the title. Checks: scoring (including small rocks' 100), wave 2,
 a life lost, game over, at least 20 fps, the high-score entry; the game is
 recorded and replayed twice (every frame hash), and it boots on a 64K
-800XL. The test writes the screenshots and the GIF.
+800XL. `.venv/bin/python projects/rock_blaster/test.py --shots`
+rewrites the screenshots and the GIF.
 
 ## Not done
 
