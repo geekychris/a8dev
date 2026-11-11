@@ -886,7 +886,16 @@ hspan:  sta     hx0
         lda     hml                     ; one byte
         and     hmr
         sta     hml
-:       lda     la_ok
+        jmp     @go
+:       lda     hb1                     ; the whole bytes between: the unrolled
+        clc                             ; stores' entry (both lines alike)
+        sbc     hb0                     ; hb1 - hb0 - 1
+        tax
+        lda     hent_lo,x
+        sta     hjmp+1
+        lda     hent_hi,x
+        sta     hjmp+2
+@go:    lda     la_ok
         bne     :+
         ldy     la
         jsr     hline
@@ -903,12 +912,11 @@ hline:  lda     _a3d_ylo,y
         ora     a3d_bsel
         sta     a3d_p+1
         tya
-        and     #1
-        beq     :+
+        lsr     a
+        lda     _a3d_pat_e
+        bcc     :+
         lda     _a3d_pat_o
-        .byte   $2C                     ; bit abs: skip the next load
-:       lda     _a3d_pat_e
-        sta     hpat
+:       sta     hpat
         ldy     hb0
         lda     (a3d_p),y
         eor     hpat
@@ -916,23 +924,34 @@ hline:  lda     _a3d_ylo,y
         eor     (a3d_p),y
         sta     (a3d_p),y
         cpy     hb1
-        beq     @done
-        iny
+        bne     :+
+        rts                             ; (one byte)
+:       iny
         lda     hpat
-@mid:   cpy     hb1
-        beq     @last
+hjmp:   jmp     hunroll
+hunroll:
+        .repeat 38
         sta     (a3d_p),y
         iny
-        bne     @mid
-@last:  lda     (a3d_p),y
+        .endrepeat
+hl_last:  lda     (a3d_p),y
         eor     hpat
         and     hmr
         eor     (a3d_p),y
         sta     (a3d_p),y
-@done:  rts
+hl_done:  rts
 
 .segment "RODATA"
 hsetl:  .byte   $FF, $3F, $0F, $03
+; the entry into hunroll for n whole bytes (0..38): 38 - n stores in
+hent_lo:
+        .repeat 39, I
+        .byte   <(hunroll + (38 - I) * 3)
+        .endrepeat
+hent_hi:
+        .repeat 39, I
+        .byte   >(hunroll + (38 - I) * 3)
+        .endrepeat
 hsetr:  .byte   $C0, $F0, $FC, $FF
 
 .segment "LOWRAM"
@@ -951,12 +970,13 @@ lb_ok:  .res 1
 ; each radius class scaled on its plane: for plane k at depth dz = ps_cz -
 ; plane_z[k] (too near: pl_on[k] = 0), pl_kx = 115 * 256 / dz, pl_ky = 98 *
 ; 256 / dz, pl_cx = 80 + ps_ox * pl_kx / 256, pl_cy = 44 - ps_oy * pl_ky /
-; 256; cr_x[c] = cls_r[c] * pl_kx[plane] / 256, cr_y likewise
-        .import   _plane_z, _cls_r, _a3d_mulf_, _a3d_mb
-        .export   _proj_setup, _ps_cz, _ps_ox, _ps_oy, _ps_nplanes, _pl_kx, _pl_ky
-
+; 256; cr_x[c] = cls_r[c] * pl_kx[plane] / 256, cr_y likewise.
+; The scales from a reciprocal table (pk_tab: 115 * 65536 / d for d 128..255,
+; dz normalised into that range) and the products by a3d's quarter squares:
+; no divisions, no a3d_mulf
+        .import   _plane_z, _cls_r
+        .export   _proj_setup, _ps_cz, _ps_ox, _ps_oy, _ps_nplanes, _pl_kx, _pl_ky, _pk_tab
 NEARZ = 12
-
 .segment "LOWRAM"
 _ps_cz: .res 2
 _ps_ox: .res 2
@@ -964,37 +984,80 @@ _ps_oy: .res 2
 _ps_nplanes: .res 1
 _pl_kx: .res 2 * NPL
 _pl_ky: .res 2 * NPL
-dnum:   .res 2
+_pk_tab: .res 256                       ; (view_init)
 dden:   .res 2
-drem:   .res 2
 pk2:    .res 1
-
+um:     .res 2                          ; umul: um * uk >> 8 -> ur
+uk:     .res 2
+ur:     .res 2
+usg:    .res 1
+uth:    .res 1
 .segment "CODE"
-; dnum = dnum / dden (16 bits, unsigned)
-udiv:   lda     #0
-        sta     drem
-        sta     drem+1
-        ldx     #16
-@l:     asl     dnum
-        rol     dnum+1
-        rol     drem
-        rol     drem+1
-        lda     drem
-        sec
-        sbc     dden
-        tay
-        lda     drem+1
-        sbc     dden+1
-        bcc     @no
-        sta     drem+1
-        sty     drem
-        inc     dnum
-@no:    dex
-        bne     @l
-        rts
+; ur = um * uk >> 8 (unsigned 16 x 16, the result in 16 bits)
+umul:   lda     uk
+        jsr     mulset_u
+        ldy     um
+        MUL
+        sta     ur                      ; (m_lo k_lo) >> 8
+        lda     #0
+        sta     ur+1
+        ldy     um+1
+        beq     @k1
+        MUL                             ; + m_hi k_lo
+        sta     uth
+        txa
+        clc
+        adc     ur
+        sta     ur
+        lda     uth
+        adc     ur+1
+        sta     ur+1
+@k1:    lda     uk+1
+        beq     @done
+        jsr     mulset_u
+        ldy     um
+        MUL                             ; + m_lo k_hi
+        sta     uth
+        txa
+        clc
+        adc     ur
+        sta     ur
+        lda     uth
+        adc     ur+1
+        sta     ur+1
+        ldy     um+1
+        beq     @done
+        MUL                             ; + (m_hi k_hi) << 8
+        txa
+        clc
+        adc     ur+1
+        sta     ur+1
+@done:  rts
 
-; A:X * (Y -> a 16-bit at _a3d_mb) / 256, signed, a3d's
-mulf_:  jmp     _a3d_mulf_
+; the same, um signed (A:X), the result signed in ur
+smul:   sta     um
+        stx     um+1
+        stx     usg
+        txa
+        bpl     :+
+        sec
+        lda     #0
+        sbc     um
+        sta     um
+        lda     #0
+        sbc     um+1
+        sta     um+1
+:       jsr     umul
+        bit     usg
+        bpl     :+
+        sec
+        lda     #0
+        sbc     ur
+        sta     ur
+        lda     #0
+        sbc     ur+1
+        sta     ur+1
+:       rts
 
 _proj_setup:
         ldx     #0
@@ -1019,72 +1082,84 @@ _proj_setup:
         jmp     @nextp
 @on:    lda     #1
         sta     _pl_on,x
-        lda     #<29440                 ; kx = 115 * 256 / dz
-        sta     dnum
-        lda     #>29440
-        sta     dnum+1
-        jsr     udiv
-        ldx     pk2
-        txa
+        ; kx = pk_tab[d] >> s: dz normalised to d in 128..255, s = 8 + the shift
+        ldx     #8
+        lda     dden+1
+        beq     @lo
+@rs:    lsr     dden+1                  ; dz > 255: down
+        ror     dden
+        inx
+        lda     dden+1
+        bne     @rs
+        lda     dden
+        bmi     @norm
+@lo:    lda     dden                    ; dz < 128: up
+@ls:    bmi     @norm
+        dex
         asl     a
+        jmp     @ls
+@norm:  asl     a                       ; (d - 128) * 2
         tay
-        lda     dnum
-        sta     _pl_kx,y
-        lda     dnum+1
-        sta     _pl_kx+1,y
-        lda     #<25088                 ; ky = 98 * 256 / dz
-        sta     dnum
-        lda     #>25088
-        sta     dnum+1
-        jsr     udiv
-        ldx     pk2
-        txa
-        asl     a
-        tay
-        lda     dnum
-        sta     _pl_ky,y
-        lda     dnum+1
-        sta     _pl_ky+1,y
-        ; pl_cx = 80 + ox * kx / 256
-        lda     _pl_kx,y
-        sta     _a3d_mb
-        lda     _pl_kx+1,y
-        sta     _a3d_mb+1
-        lda     _ps_ox
-        ldx     _ps_ox+1
-        jsr     _a3d_mulf_
-        clc
-        adc     #80
-        pha
-        txa
-        adc     #0
-        tax
+        lda     _pk_tab,y
+        sta     ur
+        lda     _pk_tab+1,y
+@sh:    lsr     a
+        ror     ur
+        dex
+        bne     @sh
+        sta     ur+1
         lda     pk2
         asl     a
         tay
-        pla
+        lda     ur
+        sta     _pl_kx,y
+        sta     uk
+        lda     ur+1
+        sta     _pl_kx+1,y
+        sta     uk+1
+        lda     #<218                   ; ky = kx * 98 / 115 (218 / 256)
+        sta     um
+        lda     #0
+        sta     um+1
+        jsr     umul
+        lda     pk2
+        asl     a
+        tay
+        lda     ur
+        sta     _pl_ky,y
+        lda     ur+1
+        sta     _pl_ky+1,y
+        ; pl_cx = 80 + ox * kx / 256 (uk = kx still)
+        lda     _ps_ox
+        ldx     _ps_ox+1
+        jsr     smul
+        lda     pk2
+        asl     a
+        tay
+        clc
+        lda     ur
+        adc     #80
         sta     _pl_cx,y
-        txa
+        lda     ur+1
+        adc     #0
         sta     _pl_cx+1,y
         ; pl_cy = 44 - oy * ky / 256
         lda     _pl_ky,y
-        sta     _a3d_mb
+        sta     uk
         lda     _pl_ky+1,y
-        sta     _a3d_mb+1
+        sta     uk+1
         lda     _ps_oy
         ldx     _ps_oy+1
-        jsr     _a3d_mulf_
-        sta     p1
-        stx     p2
+        jsr     smul
         lda     pk2
         asl     a
         tay
-        lda     #44
         sec
-        sbc     p1
+        lda     #44
+        sbc     ur
         sta     _pl_cy,y
         lda     #0
-        sbc     p2
+        sbc     ur+1
         sta     _pl_cy+1,y
 @nextp: ldx     pk2
         inx
@@ -1103,31 +1178,32 @@ _proj_setup:
         txa
         asl     a
         sta     cc
+        tay
+        lda     _cls_r,y
+        sta     um
+        lda     _cls_r+1,y
+        sta     um+1
         ldy     pp                      ; cr_x = r * kx / 256
         lda     _pl_kx,y
-        sta     _a3d_mb
+        sta     uk
         lda     _pl_kx+1,y
-        sta     _a3d_mb+1
+        sta     uk+1
+        jsr     umul
         ldy     cc
-        lda     _cls_r,y
-        ldx     _cls_r+1,y
-        jsr     _a3d_mulf_
-        ldy     cc
+        lda     ur
         sta     _cr_x,y
-        txa
+        lda     ur+1
         sta     _cr_x+1,y
         ldy     pp                      ; cr_y = r * ky / 256
         lda     _pl_ky,y
-        sta     _a3d_mb
+        sta     uk
         lda     _pl_ky+1,y
-        sta     _a3d_mb+1
+        sta     uk+1
+        jsr     umul
         ldy     cc
-        lda     _cls_r,y
-        ldx     _cls_r+1,y
-        jsr     _a3d_mulf_
-        ldy     cc
+        lda     ur
         sta     _cr_y,y
-        txa
+        lda     ur+1
         sta     _cr_y+1,y
 @nextc: ldx     pk2
         inx

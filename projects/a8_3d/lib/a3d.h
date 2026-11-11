@@ -82,6 +82,10 @@ extern void __fastcall__ a3d_clear_rows_(uint8_t pattern);
    (polygons, spans and lines record it): cost follows what was drawn */
 extern void __fastcall__ a3d_clear_dirty_(uint8_t pattern);
 #define a3d_clear_dirty(pat) a3d_clear_dirty_(pat)
+/* drawing done outside a3d: add lines dr[0]..dr[1]-1, pixels dr[2]..dr[3]
+   (inclusive, 0..159) to the back buffer's dirty rectangle */
+extern uint8_t a3d_dr[4];
+extern void a3d_dirty_mark(void);
 
 /* ---------------------------------------------------------------- drawing */
 /* pattern bytes used on even and odd lines by polygons and spans */

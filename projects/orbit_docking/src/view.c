@@ -37,6 +37,7 @@ extern int16_t pl_cx[NPLANES], pl_cy[NPLANES], cr_x[NCLS], cr_y[NCLS], pv_x[NVER
 extern int16_t pl_kx[NPLANES], pl_ky[NPLANES], ps_cz, ps_ox, ps_oy;
 extern uint8_t ps_nplanes;
 extern void proj_setup(void);
+extern uint16_t pk_tab[128];
 extern void proj_all(void);
 
 #define LINES 88
@@ -58,7 +59,7 @@ static uint8_t roll8;
 static uint8_t star_roll = 1;
 uint8_t star_sx[NSTARS], star_sy[NSTARS];
 extern void plot_stars(void);
-static uint8_t dial_n = 0xFF, dot_y;
+static uint8_t dial_n = 0xFF, dot_y, full_clear = 2;
 
 
 #define MULQ7(v, q) a3d_mulf((v), (int16_t)(q) * 2)     /* v * q / 128 */
@@ -68,6 +69,7 @@ void view_init(void)
 {
     uint8_t *m;
     uint16_t t;
+    for (t = 0; t < 128; ++t) pk_tab[t] = (uint16_t)(7536640UL / (t + 128));   /* 115 * 65536 / d (proj_setup) */
     for (t = 0; t < 256; ++t) ell_w[t] = (uint8_t)od_isqrt(65025UL - ((uint32_t)(t * t) * 65025UL >> 16));
     a3d_init(LINES, 2);
     COLOR4 = 0x00;                      /* space */
@@ -158,13 +160,14 @@ static void debris(uint8_t k)
 
 static void station(void)
 {
-    uint8_t k;
+    uint8_t k, m;
     ps_cz = G.z >> 4; ps_ox = ox; ps_oy = oy;
     ps_nplanes = NPLANES;
     pj_ncls = NCLS;
     proj_setup();                       /* each plane's scale and centre, each radius scaled (proj.s) */
-    for (k = 0; k < NPLANES; ++k)
-        pl_phi[k] = plane_turns[k] ? (uint8_t)(G.st_angle >> 16) - roll8 : (uint8_t)-roll8;
+    k = ((uint8_t *)&G.st_angle)[2];    /* (G.st_angle >> 16, without a 32-bit shift) */
+    for (m = 0; m < NPLANES; ++m)
+        pl_phi[m] = plane_turns[m] ? k - roll8 : (uint8_t)-roll8;
     proj_all();
     /* port: the lights only when they're a few pixels */
     dp_lod = 1 | (cr_x[FACE_CLS] >= 12 ? 8 : 0);
@@ -177,8 +180,14 @@ static void station(void)
         rg_ox = a3d_mulf(300, pl_kx[3]); rg_oy = a3d_mulf(300, pl_ky[3]);
         rg_ix = a3d_mulf(260, pl_kx[3]); rg_iy = a3d_mulf(260, pl_ky[3]);
         if (rg_oy > 0 && rg_iy > 0 && rg_cx + rg_ox >= 0 && rg_cx - rg_ox < 160 && rg_cy + rg_oy >= 0 && rg_cy - rg_oy < LINES) {
-            rg_so = rg_oy > 1 ? (uint16_t)(65536UL / rg_oy) : 0xFFFF;
-            rg_si = rg_iy > 1 ? (uint16_t)(65536UL / rg_iy) : 0xFFFF;
+            /* its rectangle, for the next clear (the ring is drawn outside a3d) */
+            a3d_dr[0] = rg_cy - rg_oy < 0 ? 0 : (uint8_t)(rg_cy - rg_oy);
+            a3d_dr[1] = rg_cy + rg_oy + 1 > LINES ? LINES : (uint8_t)(rg_cy + rg_oy + 1);
+            a3d_dr[2] = rg_cx - rg_ox < 0 ? 0 : (uint8_t)(rg_cx - rg_ox);
+            a3d_dr[3] = rg_cx + rg_ox > 159 ? 159 : (uint8_t)(rg_cx + rg_ox);
+            a3d_dirty_mark();
+            rg_so = rg_oy > 1 ? 0xFFFFu / (uint16_t)rg_oy : 0xFFFF;   /* (65536 / r: 16 bits do) */
+            rg_si = rg_iy > 1 ? 0xFFFFu / (uint16_t)rg_iy : 0xFFFF;
             a3d_pattern(0xAA, 0xAA);
             ring_draw();
         }
@@ -197,7 +206,11 @@ void view_draw(void)
     rs = a3d_sin(roll8);
     ox = MULQ7(cx, rc) + MULQ7(cy, rs);
     oy = MULQ7(cx, rs) - MULQ7(cy, rc);
-    a3d_clear(0);                       /* the stars are everywhere: all of it */
+    /* the stars are everywhere, but stay put while the roll does: then only
+       what was drawn over them is cleared; a roll clears it all (both buffers) */
+    if (roll8 != star_roll) full_clear = 2;
+    if (full_clear) { a3d_clear(0); --full_clear; }
+    else a3d_clear_dirty(0);
     stars();
     station();
     /* the markers and debris, far (low z) to near */
