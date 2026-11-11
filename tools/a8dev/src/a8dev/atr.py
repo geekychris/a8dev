@@ -10,7 +10,11 @@ Layout (single density, 128-byte sectors; sdk/boot/boot.s is the loader):
                        +0 start sector (word)  +2 length (3 bytes)  +5 flags
                        +6 title (26 bytes, ATASCII, 0-padded)
                      entry 0 is the program the disk boots into (the menu)
-    sectors 17..     the files, each in whole consecutive sectors
+    sectors 17..264  pictures, 8 sectors (1024 bytes) for each entry 1..31:
+                       +0 COLOR4 COLOR0 COLOR1 COLOR2 (background, pixel 1..3)
+                       +4 48 rows x 20 bytes of ANTIC mode D (80x48, 2 bits a pixel)
+                       +1023 = $A8 when a picture is present
+    sectors 265..    the files, each in whole consecutive sectors
 
 The ATR header's size field counts 16-byte paragraphs; sectors above 720
 make an "enhanced" image every emulator reads (Atari800, Altirra).
@@ -24,8 +28,11 @@ SECTOR = 128
 BOOT_SECTORS = 8
 DIR_SECTOR = 9
 DIR_SECTORS = 8
-FIRST_FILE = DIR_SECTOR + DIR_SECTORS
+PIC_SECTOR = DIR_SECTOR + DIR_SECTORS
+PIC_SECTORS = 8
 MAX_ENTRIES = DIR_SECTORS * SECTOR // 32
+FIRST_FILE = PIC_SECTOR + PIC_SECTORS * (MAX_ENTRIES - 1)
+PIC_BYTES = PIC_SECTORS * SECTOR
 TITLE_LEN = 26
 
 
@@ -58,8 +65,10 @@ def atr_header(sectors: int) -> bytes:
     return struct.pack("<HHHB9x", 0x0296, paras & 0xFFFF, SECTOR, paras >> 16)
 
 
-def make_disk(path, boot: bytes, files: list[tuple[str, bytes]]) -> list[dict]:
-    """Write an ATR: the loader, the directory and the files. Returns the
+def make_disk(path, boot: bytes, files: list[tuple[str, bytes]],
+              pictures: list[bytes | None] | None = None) -> list[dict]:
+    """Write an ATR: the loader, the directory, pictures (pictures[i] for
+    files[i + 1], 1024 bytes each, or None) and the files. Returns the
     directory entries (index, title, sector, length)."""
     if len(boot) > BOOT_SECTORS * SECTOR:
         raise AtrError(f"boot loader is {len(boot)} bytes, more than {BOOT_SECTORS} sectors")
@@ -78,7 +87,13 @@ def make_disk(path, boot: bytes, files: list[tuple[str, bytes]]) -> list[dict]:
         padded = bytes(xex) + b"\0" * (-len(xex) % SECTOR)
         data += padded
         sector += len(padded) // SECTOR
-    body += directory + data
+    pics = bytearray(PIC_SECTORS * SECTOR * (MAX_ENTRIES - 1))
+    for i, p in enumerate(pictures or []):
+        if p:
+            if len(p) != PIC_BYTES:
+                raise AtrError(f"picture {i}: {len(p)} bytes, not {PIC_BYTES}")
+            pics[i * PIC_BYTES:(i + 1) * PIC_BYTES] = p
+    body += directory + pics + data
     total = len(body) // SECTOR
     total = max(total, 720)                       # at least a standard 90K disk
     body = body.ljust(total * SECTOR, b"\0")
