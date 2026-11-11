@@ -44,7 +44,8 @@
 /* printf-style (cc65: %d/%u/%x are 16-bit int, %ld/%lu for long). Output is
    cut at 127 characters. Pulls in vsnprintf (~2 KB). */
 extern void __cdecl__ a8_log(const char *fmt, ...);
-/* A plain string: tiny and fast (no formatting code linked). */
+/* A plain string: tiny and fast (no formatting code linked: a program that
+   uses only a8_log_s / a8_log_u / a8_log_c / a8_done / a8_fail saves ~1.3K). */
 extern void __fastcall__ a8_log_s(const char *s);
 /* One character. */
 #define a8_log_c(c)  (A8_LOG_PORT = (unsigned char)(c))
