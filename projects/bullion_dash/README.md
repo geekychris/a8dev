@@ -75,19 +75,32 @@ version (`src/game.h`, `src/enemy.c`, `src/level.c`):
   takes 5 and 7, and the original's guards took 3.
 - **Start:** every guard waits 3 s at the start of a level, and one placed
   on the runner's start row enters from the top instead.
-- **Stolen gold:** a guard drops it again after 4 s, on the first free cell
-  with a floor.
+- **Stolen gold:** a guard drops it again after 3 s, on the first empty
+  cell it steps onto where gold lay at the start of the level. On other
+  cells it could land in a pit the player can't leave: measured in
+  [ORIGINAL_BUGS.md](ORIGINAL_BUGS.md), this kind of drop made a level
+  unwinnable in 9 of 600 runs, against 21 for any free cell. When that
+  happens, ESC gives up the life and restarts the level.
 
 The Spectrum port's bot (`tools/try_levels.py` there, the same C rules)
 results on the 150 repaired levels:
 - **The original's guards:** 3 cleared, 139 caught, 8 out of time.
-- **The fixed guards:** 66 cleared, 56 caught, 28 out of time; 62-74
+- **The fixed guards:** 57 cleared, 54 caught, 39 out of time; 57-64
   cleared across runs.
 - **No guards:** 124 cleared (the bot's own limit).
 
-Details are in [ORIGINAL_BUGS.md](ORIGINAL_BUGS.md). The editor's kept
-level (S / L) moved into the screen's memory to make room for the fix's
-code.
+Details are in [ORIGINAL_BUGS.md](ORIGINAL_BUGS.md).
+
+To make room for the fix's code:
+- The editor's kept level (S / L) moved into `$9600-$96FF`, below a C
+  stack cut to 256 bytes (it uses 28).
+- The left-facing sprite frames moved into the screen's memory, below
+  gridbfs's queue page at `$9500`.
+- The gold-home bits went into the 56 bytes after the levels, at `$BFC8`.
+
+`xexsegs.s` checks both limits: the levels end below `$BFC8`, and the
+screen's memory below `$9500`. An earlier version had put the kept level
+into that page, where the guards' pathfinding could overwrite it.
 
 ## The Atari version
 
@@ -108,9 +121,11 @@ code.
   level.
 - **Memory.** `bullion.cfg`: the XEX first runs a tiny segment that switches
   BASIC (and the screen) off, then loads the levels' bits into
-  `$A000-$BFC7`, then the program `$2000-$8FAB` (with the levels' other
-  tables). The screen's lines and display lists are at
-  `$9000`, the C stack (512 bytes; the locals are static) at `$9600`, the
+  `$A000-$BFC7` (the gold-home bits follow at `$BFC8`), then the program
+  `$2000-$8FD4` (with the levels' other tables). The screen's lines and
+  display lists are at `$9000` (gridbfs's queue in its top page, `$9500`),
+  the editor's kept level at `$9600`, the C stack (256 bytes; the locals
+  are static, it uses 28) at `$9700`, the
   character set's 84 characters at `$9800` under the players (`$9B00`).
   No 130XE banks: it runs on a 64K 800XL (the test boots it there) and on a
   48K 400/800.
