@@ -32,8 +32,8 @@ editor.
 original's `player.c`, `enemy.c`, `level.c` and `main.c` rules, statement for
 statement, as the ZX Spectrum port has them: movement 2 pixels a frame on a
 grid of 10 x 14 pixel tiles, gravity, bars, ladders, digging (10 frames),
-bricks growing back after 150 frames, guards that take a step every third
-frame along a breadth-first path to the player, fall into holes, steal gold
+bricks growing back after 150 frames, guards that step along a
+breadth-first path to the player (slowed down: below), fall into holes, steal gold
 (30%) and drop it, die in a regrown brick and come back on the top row,
 hidden ladders shown when all the gold is in, 100 a gold, 1000 a level,
 five lives. The 150 levels are the original's, repaired so they can be won
@@ -69,8 +69,25 @@ the exit ladder:
 
 ![level 150, won](screenshots/level150-won.png)
 
-The guards are still faster than the runner, so the main game's test
-loses its lives to them.
+**The guards are fixed too**, by a new rule that is the same in every
+version (`src/game.h`, `src/enemy.c`, `src/level.c`):
+- **Speed:** a tile every 8 frames across and 10 up or down; the runner
+  takes 5 and 7, and the original's guards took 3.
+- **Start:** every guard waits 3 s at the start of a level, and one placed
+  on the runner's start row enters from the top instead.
+- **Stolen gold:** a guard drops it again after 4 s, on the first free cell
+  with a floor.
+
+The Spectrum port's bot (`tools/try_levels.py` there, the same C rules)
+results on the 150 repaired levels:
+- **The original's guards:** 3 cleared, 139 caught, 8 out of time.
+- **The fixed guards:** 66 cleared, 56 caught, 28 out of time; 62-74
+  cleared across runs.
+- **No guards:** 124 cleared (the bot's own limit).
+
+Details are in [ORIGINAL_BUGS.md](ORIGINAL_BUGS.md). The editor's kept
+level (S / L) moved into the screen's memory to make room for the fix's
+code.
 
 ## The Atari version
 
@@ -91,7 +108,7 @@ loses its lives to them.
   level.
 - **Memory.** `bullion.cfg`: the XEX first runs a tiny segment that switches
   BASIC (and the screen) off, then loads the levels' bits into
-  `$A000-$BFC7`, then the program `$2000-$8F21` (with the levels' other
+  `$A000-$BFC7`, then the program `$2000-$8FAB` (with the levels' other
   tables). The screen's lines and display lists are at
   `$9000`, the C stack (512 bytes; the locals are static) at `$9600`, the
   character set's 84 characters at `$9800` under the players (`$9B00`).
@@ -113,7 +130,7 @@ screen) takes about 0.6 s.
 `./a8 test bullion_dash`: the editor (cursor taps, tiles, a ladder, a gold,
 the runner), a test play that takes the gold and climbs out (LEVEL
 COMPLETE, back to the editor), a game from level 4 where the runner takes
-the gold beside him each life until the guard catches him (five lives, game
+the gold beside him each life until a guard catches him (five lives, game
 over, initials BOT, the table), level 121's five guards, the session
 recorded and replayed twice (every frame hash), and the XEX on a 64K 800XL.
 `.venv/bin/python projects/bullion_dash/test.py --shots`
