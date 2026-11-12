@@ -40,7 +40,11 @@ static uint8_t move_delay, status_timer;
 static uint8_t redraw;                              /* the editor screen needs drawing */
 static uint8_t shown_x = 255, shown_y, shown_idx = 255;
 static uint8_t edit_grid[GRID_COLS * GRID_ROWS / 2];   /* the level while it is test-played */
-static uint8_t kept[GRID_COLS * GRID_ROWS / 2];        /* port: S / L */
+/* port: S / L; in the screen's memory (SCRBSS, not zeroed: read only once
+   have_kept says it was written), which leaves room in MAIN for the guard fix */
+#pragma bss-name (push, "SCRBSS")
+static uint8_t kept[GRID_COLS * GRID_ROWS / 2];
+#pragma bss-name (pop)
 static uint8_t have_kept;
 static const char *status_msg;
 
