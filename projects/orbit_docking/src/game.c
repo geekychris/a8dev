@@ -48,19 +48,35 @@ static void lgu(const char *k, uint16_t v) { a8_log_s(k); a8_log_u(v); }
 /* ------------------------------------------------------------ the HUD */
 static void put(uint8_t pos, const char *s, uint8_t w)
 {
-    uint8_t *p = A3D_TEXT + pos, c;
-    while (w && (c = (uint8_t)*s++) != 0) {
-        *p++ = c < 0x20 ? c + 0x40 : c < 0x60 ? c - 0x20 : c;
-        --w;
+    static uint8_t *p;
+    static const char *q;
+    static uint8_t i, c;
+    p = A3D_TEXT + pos;
+    q = s;
+    for (i = 0; i < w; ++i) {
+        c = (uint8_t)q[i];
+        if (!c) break;
+        if (c < 0x20) c += 0x40;
+        else if (c < 0x60) c -= 0x20;
+        p[i] = c;
     }
-    while (w--) *p++ = 0;
+    for (; i < w; ++i) p[i] = 0;
 }
 
+/* v's last w digits, zero-padded; by subtracting powers of ten (cc65's
+   16-bit divisions cost ~1K cycles each) */
+static const uint16_t pow10[4] = { 10000, 1000, 100, 10 };
 static void numw(uint8_t pos, uint16_t v, uint8_t w)
 {
-    uint8_t *p = A3D_TEXT + pos + w;
-    do { *--p = (uint8_t)(0x10 + v % 10); v /= 10; } while (--w && v);
-    while (w--) *--p = 0x10;
+    static uint8_t dig[5], k, d;
+    static uint16_t t;
+    for (k = 0; k < 4; ++k) {
+        t = pow10[k];
+        for (d = 0x10; v >= t; ++d) v -= t;
+        dig[k] = d;
+    }
+    dig[4] = (uint8_t)(0x10 + v);
+    memcpy(A3D_TEXT + pos, dig + 5 - w, w);
 }
 
 static void inverse(uint8_t pos, uint8_t w)
@@ -90,9 +106,9 @@ static void hud(void)
     numw(17, range < 0 ? 0 : (uint16_t)range, 4);
     put(21, " CLOSE ", 7);
     A3D_TEXT[28] = close < 0 ? 0x0D : 0;               /* '-' */
-    numw(29, (uint16_t)(close < 0 ? -close : close) / 10, 1);
+    numw(29, (uint16_t)(close < 0 ? -close : close), 2);   /* the units and tenths, */
+    A3D_TEXT[31] = A3D_TEXT[30];                        /* the point between them */
     A3D_TEXT[30] = 0x0E;                                /* '.' */
-    numw(31, (uint16_t)(close < 0 ? -close : close) % 10, 1);
     if (range < 150 && -G.vz > OD_TOL_CLOSE) inverse(28, 4);   /* too fast near the port */
     put(32, " ", 1);
     numw(33, G.score, 5);

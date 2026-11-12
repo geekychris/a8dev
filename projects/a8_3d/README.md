@@ -119,7 +119,7 @@ pixels. So the games draw as little 3D as they can:
 | lander_3d | measured 3-7.5 fps (5.5 average) | a 5 x 4-cell window, the lander in players (see its README) |
 | marble_tilt | 17-25 fps | the maze redrawn only when the tilt changes, the marble a 50 Hz sprite |
 | block_breaker_3d | measured: sprites 40-50 Hz, bitmap 20-25 fps, rules 25 ticks/s | the tunnel never redrawn (a row + a middle run a line), bricks redrawn round a hit, the ball/paddle/capsules/ring in players placed by the VBI (see its README) |
-| orbit_docking | measured 4-5 fps by hand, 3.5-4 on the autopilot | filled, the corners projected per plane (the camera only rolls), the ring an annulus of spans, hidden sides culled first (see its README) |
+| orbit_docking | measured 4.2-6.4 fps by hand, 3.2-4.6 on the autopilot | filled, the corners projected per plane (the camera only rolls), the ring as its two edges (thin ellipses), hidden sides culled first (see its README) |
 | tank_duel | 6-10 fps | few, large flat polygons |
 
 Input in a 6-frame iteration: a short tap can fall between two reads, so
