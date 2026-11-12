@@ -7,7 +7,8 @@
 ; cr_x/cr_y the radius scaled to pixels / lines on its plane and pl_cx/cy
 ; where the axis crosses the plane (view.c works those out each frame).
 ; Two products a corner, each two 8 x 8 from a3d's quarter-square tables.
-        .importzp a3d_m, a3d_p, a3d_bsel
+        .importzp a3d_m, a3d_p, a3d_q, a3d_bsel
+        .import   lbyte, keepl, rbyte, keepr
         .import   _ell_w, _a3d_ylo, _a3d_yhi, _a3d_pat_e, _a3d_pat_o
         .import   _a3d_sin8, _mv_a, _mv_plane, _cls_v0, _cls_half, _cls_plane, mulset_u
         .export   _pl_phi, _pj_ncls, _pl_cx, _pl_cy, _cr_x, _cr_y, _pv_x, _pv_y, _proj_all
@@ -668,14 +669,15 @@ cr:     .res 4
 .segment "RODATA"
 lodbit: .byte   1, 2, 4, 8
 
-; void ring_draw(void): the station's ring, an elliptical annulus round
+; void ring_draw(void): the station's ring as its two edges, ellipses round
 ; (rg_cx, rg_cy): outer half sizes rg_ox (pixels) x rg_oy (lines), inner
-; rg_ix x rg_iy, filled a line at a time in a3d's pattern. The half widths
+; rg_ix x rg_iy, drawn a line at a time in a3d's pattern. The half widths
 ; for each line from the middle (ell_w: 255 sqrt(1 - t^2)) are worked out
 ; only when the sizes change (they don't while the craft rolls or waits),
 ; into rw_o / rw_i (255: wider than the screen; rw_i 0xFF.. none: past the
 ; hole). rg_so / rg_si = 65536 / rg_oy / rg_iy step down ell_w.
-; port: the original's 16 quads, alternately shaded; turned, it looks the same
+; port: the original's 16 solid quads, alternately shaded; the edges only, for
+; speed (filled, the ring cost 45-70K cycles a frame; the edges 34-70K)
         .export   _rg_cx, _rg_cy, _rg_ox, _rg_oy, _rg_ix, _rg_iy, _rg_so, _rg_si, _ring_draw
 
 RWN = 128                               ; lines from the middle kept
@@ -696,10 +698,8 @@ rwn:    .res 1                          ; lines in rw_o
 ao:     .res 2
 ai:     .res 2
 rdy:    .res 1
-ly:     .res 2
 xa:     .res 2
 xb:     .res 2
-wtmp:   .res 2
 
 .segment "CODE"
 ; (A:X = r, 16 bits) * ell_w[Y] / 256 -> A (low), X (high)
@@ -786,70 +786,40 @@ widths: lda     #0
         jmp     @w
 @done:  lda     rdy
         sta     rwn
-        rts
-
-; one span x0 = xa .. x1 = xb (exclusive), clipped to 0..160, on line ly
-span:   lda     xb+1
-        bmi     @no
-        bne     :+
-        lda     xb
-        beq     @no
-        cmp     #161
-        bcc     :++
-:       lda     #160
-        sta     xb
-        lda     #0
-        sta     xb+1
-:       lda     xa+1
-        bmi     @zero
-        bne     @no
-        lda     xa
-        cmp     #160
-        bcs     @no
-        bcc     @set
-@zero:  lda     #0
-@set:   cmp     xb
-        bcs     @no
-        jmp     hspan                   ; A = x0, xb = x1
-@no:    rts
-
-; the lines cy - dy and cy + dy (the same spans; la_ok / lb_ok: on the
-; screen): one span cx - wo .. cx + wo + 1, or two round the hole
-line:   lda     _rg_cx
-        sec
-        sbc     wtmp
-        sta     xa
-        lda     _rg_cx+1
-        sbc     #0
-        sta     xa+1
+        ; each line's edges run from ro_n / ri_n (the next line's half
+        ; width + 1, at most this line's; 0 on the last line: across)
         ldx     rdy
+        dex
+        stx     rwl                     ; the last line
+        ldx     #0
+@n:     lda     #0
+        cpx     rwl
+        bcs     @o0
+        lda     rw_o+1,x
+        cmp     #255
+        beq     @o0                     ; (then this one is 255: not drawn)
+        adc     #1
+        cmp     rw_o,x
+        bcc     @o0
+        lda     rw_o,x
+@o0:    sta     ro_n,x
+        lda     #0
+        cpx     rwl
+        bcs     @i0
+        lda     rw_i+1,x
+        cmp     #254
+        bcs     @iz                     ; past the hole next line: across
+        adc     #1
+        cmp     rw_i,x
+        bcc     @i0
         lda     rw_i,x
-        cmp     #$FF
-        beq     @one
-        lda     _rg_cx                  ; left: .. cx - wi
-        sec
-        sbc     rw_i,x
-        sta     xb
-        lda     _rg_cx+1
-        sbc     #0
-        sta     xb+1
-        jsr     span
-        ldx     rdy                     ; right: cx + wi + 1 ..
-        lda     _rg_cx
-        sec
-        adc     rw_i,x
-        sta     xa
-        lda     _rg_cx+1
-        adc     #0
-        sta     xa+1
-@one:   lda     _rg_cx                  ; .. cx + wo + 1
-        sec
-        adc     wtmp
-        sta     xb
-        lda     _rg_cx+1
-        adc     #0
-        sta     xb+1
-        jmp     span
+        bcs     @i0
+@iz:    lda     #0
+@i0:    sta     ri_n,x
+        inx
+        cpx     rwn
+        bcc     @n
+        rts
 
 ; is line (A low, X high) on the screen? carry clear if it is
 onscr:  cpx     #0
@@ -873,12 +843,23 @@ _ring_draw:
         dex
         bpl     :-
         jsr     widths
-@draw:  lda     #0
+@draw:  lda     #0                      ; wholly on the screen across? (8-bit x, no clipping)
+        sta     rfast
+        lda     _rg_cx+1
+        ora     _rg_ox+1
+        bne     :+
+        lda     _rg_cx
+        cmp     _rg_ox
+        bcc     :+
+        adc     _rg_ox                  ; (C set: cx + ox + 1)
+        bcs     :+
+        cmp     #161
+        bcs     :+
+        lda     #$80
+        sta     rfast
+:       lda     #0
         sta     rdy
-@dy:    ldx     rdy
-        lda     rw_o,x
-        sta     wtmp
-        lda     #0                      ; the two lines: cy - dy, cy + dy
+@dy:    lda     #0                      ; the two lines: cy - dy, cy + dy
         sta     la_ok
         sta     lb_ok
         lda     _rg_cy
@@ -908,92 +889,225 @@ _ring_draw:
 :       lda     la_ok
         and     lb_ok
         bne     :+                      ; neither: nothing to draw
-        jsr     line
+        jsr     rline
 :       inc     rdy
         lda     rdy
         cmp     rwn
         bcc     @dy
         rts
 
-; hspan: pixels A .. xb-1 on lines la (if la_ok = 0) and lb (if lb_ok = 0)
-; of the back buffer in a3d's pattern (the two lines have the same parity)
-hspan:  sta     hx0
-        tax
-        lsr     a
-        lsr     a
-        sta     hb0
-        txa
-        and     #3
-        tax
-        lda     hsetl,x
-        sta     hml
-        ldx     xb
-        dex
-        txa
-        lsr     a
-        lsr     a
-        sta     hb1
-        txa
-        and     #3
-        tax
-        lda     hsetr,x
-        sta     hmr
-        lda     hb0
-        cmp     hb1
-        bne     :+
-        lda     hml                     ; one byte
-        and     hmr
-        sta     hml
-:       lda     la_ok
-        bne     :+
+; the lines cy - dy (a3d_p) and cy + dy (a3d_q; one off the screen: a
+; scratch line instead, so the writes need no tests): the outer and inner
+; ellipses' edges. An edge on line dy runs from the next line's half width
+; + 1 to this line's (one pixel where the ellipse is steep; the last line
+; across, closing it)
+rline:  lda     la_ok
+        bne     @da
         ldy     la
-        jsr     hline
-:       lda     lb_ok
-        bne     :+
-        ldy     lb
-        jmp     hline
-:       rts
-
-; the span on line Y
-hline:  lda     _a3d_ylo,y
+        lda     _a3d_ylo,y
         sta     a3d_p
         lda     _a3d_yhi,y
         ora     a3d_bsel
         sta     a3d_p+1
-        tya
+        bne     @pb
+@da:    lda     #<rscr
+        sta     a3d_p
+        lda     #>rscr
+        sta     a3d_p+1
+@pb:    lda     lb_ok
+        bne     @db
+        ldy     lb
+        lda     _a3d_ylo,y
+        sta     a3d_q
+        lda     _a3d_yhi,y
+        ora     a3d_bsel
+        sta     a3d_q+1
+        bne     @pat
+@db:    lda     #<rscr
+        sta     a3d_q
+        lda     #>rscr
+        sta     a3d_q+1
+@pat:   lda     la                      ; (both lines have its parity)
         lsr     a
         lda     _a3d_pat_e
         bcc     :+
         lda     _a3d_pat_o
 :       sta     hpat
+        ldx     rdy
+        bit     rfast
+        bmi     @fast
+        ; the outer ellipse (255: wider than the screen, not drawn)
+        lda     rw_o,x
+        cmp     #255
+        beq     @inner
+        sta     ew
+        lda     ro_n,x
+        sta     en
+        jsr     edges
+        ldx     rdy
+@inner: lda     rw_i,x                  ; the hole's (254 and up: none drawn)
+        cmp     #254
+        bcs     @ret
+        sta     ew
+        lda     ri_n,x
+        sta     en
+        jmp     edges
+@ret:   rts
+@fast:  lda     rw_o,x
+        sta     ew
+        lda     ro_n,x
+        sta     en
+        jsr     fedges
+        ldx     rdy
+        lda     rw_i,x
+        cmp     #254
+        bcs     @ret
+        sta     ew
+        lda     ri_n,x
+        sta     en
+        ; (falls into fedges)
+
+; the same, the ring wholly on the screen across: 8 bits, no clipping
+fedges: lda     _rg_cx
+        sec
+        sbc     ew
+        sta     xa
+        lda     _rg_cx
+        sec
+        sbc     en
+        jsr     fseg
+        lda     _rg_cx
+        clc
+        adc     en
+        sta     xa
+        lda     _rg_cx
+        clc
+        adc     ew
+        jmp     fseg
+
+; cx - ew .. cx - en and cx + en .. cx + ew (inclusive)
+edges:  lda     _rg_cx
+        sec
+        sbc     ew
+        sta     xa
+        lda     _rg_cx+1
+        sbc     #0
+        sta     xa+1
+        lda     _rg_cx
+        sec
+        sbc     en
+        sta     xb
+        lda     _rg_cx+1
+        sbc     #0
+        sta     xb+1
+        jsr     seg
+        lda     _rg_cx
+        clc
+        adc     en
+        sta     xa
+        lda     _rg_cx+1
+        adc     #0
+        sta     xa+1
+        lda     _rg_cx
+        clc
+        adc     ew
+        sta     xb
+        lda     _rg_cx+1
+        adc     #0
+        sta     xb+1
+        ; (falls into seg)
+
+; pixels xa .. xb (inclusive, 16 bits) clipped to 0..159, on both lines
+seg:    lda     xb+1
+        bmi     segno
+        bne     @r159
+        lda     xb
+        cmp     #160
+        bcc     @rok
+@r159:  lda     #159
+        sta     xb
+@rok:   lda     xa+1
+        bmi     @l0
+        bne     segno
+        lda     xa
+        cmp     #160
+        bcs     segno
+        bcc     @lok
+@l0:    lda     #0
+@lok:   cmp     xb
+        beq     :+
+        bcs     segno                   ; x0 > x1
+:       sta     xa
+        lda     xb
+        ; (falls into fseg)
+
+; pixels xa .. A (0..159, xa <= A) on both lines
+fseg:   tay
+        iny                             ; (a3d's tables take x1 + 1)
+        ldx     xa
+        lda     rbyte,y
+        cmp     lbyte,x
+        bne     segm
+        sta     hb0                     ; one byte: the bits to keep
+        lda     keepr,y
+        ora     keepl,x
+        sta     hml
         ldy     hb0
         lda     (a3d_p),y
         eor     hpat
         and     hml
-        eor     (a3d_p),y
+        eor     hpat
         sta     (a3d_p),y
-        cpy     hb1
-        beq     hl_done
+        lda     (a3d_q),y
+        eor     hpat
+        and     hml
+        eor     hpat
+        sta     (a3d_q),y
+segno:  rts
+segm: sta     hb1
+        lda     keepr,y
+        sta     hmr
+        lda     keepl,x
+        sta     hml
+        ldy     lbyte,x
+        lda     (a3d_p),y
+        eor     hpat
+        and     hml
+        eor     hpat
+        sta     (a3d_p),y
+        lda     (a3d_q),y
+        eor     hpat
+        and     hml
+        eor     hpat
+        sta     (a3d_q),y
         iny
         lda     hpat
-@mid:   cpy     hb1
-        beq     hl_last
+segmid:   cpy     hb1
+        beq     seglast
         sta     (a3d_p),y
+        sta     (a3d_q),y
         iny
-        bne     @mid
-hl_last:  lda     (a3d_p),y
+        bne     segmid
+seglast:  lda     (a3d_p),y
         eor     hpat
         and     hmr
-        eor     (a3d_p),y
+        eor     hpat
         sta     (a3d_p),y
-hl_done:  rts
-
-.segment "RODATA"
-hsetl:  .byte   $FF, $3F, $0F, $03
-hsetr:  .byte   $C0, $F0, $FC, $FF
+        lda     (a3d_q),y
+        eor     hpat
+        and     hmr
+        eor     hpat
+        sta     (a3d_q),y
+        rts
 
 .segment "LOWRAM"
-hx0:    .res 1
+rscr:   .res 40                         ; the line off the screen
+ro_n:   .res RWN
+ri_n:   .res RWN
+rwl:    .res 1
+rfast:  .res 1
+ew:     .res 1
+en:     .res 1
 hpat:   .res 1
 hml:    .res 1
 hmr:    .res 1
@@ -1247,4 +1361,127 @@ _proj_setup:
         inx
         cpx     _pj_ncls
         bcc     @cl
+        rts
+
+; uint8_t __fastcall__ mk_fast(const uint8_t *v): an approach marker's corner
+; ticks (from each corner a quarter of the way to each neighbour, in colour
+; 3: the lines view.c's tick() draws), the corners v[0..3]. A tick whose
+; ends are both on the screen is drawn here, unclipped; the rest are left
+; to the caller (a3d_line, clipped): bit 2k = corner k -> k + 1, bit 2k+1 =
+; corner k + 1 -> k.
+        .import   _a3d_line_, _a3d_lx0, _a3d_ly0, _a3d_lx1, _a3d_ly1
+        .export   _mk_fast
+
+.segment "LOWRAM"
+mkx:    .res 8                          ; the corners (16 bits: lo 0..3, hi 4..7)
+mky:    .res 8
+mk_a:   .res 1
+mk_b:   .res 1
+mk_r:   .res 1                          ; the ticks left
+mk_e:   .res 2
+
+.segment "CODE"
+_mk_fast:
+        sta     @v+1
+        stx     @v+2
+        ldy     #3
+@v:     lda     $FFFF,y
+        asl     a
+        tax
+        lda     _pv_x,x
+        sta     mkx,y
+        lda     _pv_x+1,x
+        sta     mkx+4,y
+        lda     _pv_y,x
+        sta     mky,y
+        lda     _pv_y+1,x
+        sta     mky+4,y
+        dey
+        bpl     @v
+        lda     #0
+        sta     mk_r
+        lda     #3
+@t:     sta     mk_a
+        clc
+        adc     #1
+        and     #3
+        sta     mk_b
+        ldy     mk_b                    ; b -> a (bit 2a + 1)
+        ldx     mk_a
+        jsr     tick1
+        rol     mk_r
+        ldy     mk_a                    ; a -> b (bit 2a)
+        ldx     mk_b
+        jsr     tick1
+        rol     mk_r
+        lda     mk_a
+        sec
+        sbc     #1
+        bcs     @t
+        lda     mk_r
+        ldx     #0
+        rts
+
+; corner Y -> a quarter of the way to corner X; C set if not drawn (an end
+; off the screen)
+tick1:  lda     mkx+4,y                 ; the corner on the screen?
+        bne     @off
+        lda     mkx,y
+        cmp     #160
+        bcs     @off
+        sta     _a3d_lx0
+        lda     mky+4,y
+        bne     @off
+        lda     mky,y
+        cmp     #LINES
+        bcs     @off
+        sta     _a3d_ly0
+        lda     mkx,x                   ; the end: x + (x' - x) >> 2
+        sec
+        sbc     mkx,y
+        sta     mk_e
+        lda     mkx+4,x
+        sbc     mkx+4,y
+        jsr     q4
+        clc
+        adc     mkx,y
+        sta     _a3d_lx1
+        lda     mk_e+1
+        adc     #0
+        bne     @off
+        lda     _a3d_lx1
+        cmp     #160
+        bcs     @off
+        lda     mky,x
+        sec
+        sbc     mky,y
+        sta     mk_e
+        lda     mky+4,x
+        sbc     mky+4,y
+        jsr     q4
+        clc
+        adc     mky,y
+        sta     _a3d_ly1
+        lda     mk_e+1
+        adc     #0
+        bne     @off
+        lda     _a3d_ly1
+        cmp     #LINES
+        bcs     @off
+        lda     #3
+        jsr     _a3d_line_
+        clc
+        rts
+@off:   sec
+        rts
+
+; (mk_e, A: high) >> 2, arithmetic -> A (low), mk_e+1 (high)
+q4:     cmp     #$80
+        ror     a
+        ror     mk_e
+        cmp     #$80
+        ror     a
+        ror     mk_e
+        sta     mk_e+1
+        lda     mk_e
         rts

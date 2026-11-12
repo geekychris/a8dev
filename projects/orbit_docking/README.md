@@ -51,9 +51,10 @@ docking limits and the crash reasons, fuel, the debris, scoring, lives),
 the original's 25 ticks a second, its autopilot (it also flies behind the
 title), the camera looking back down the axis and rolling with the craft
 (rolled to match the slot, the station stands still), the station (the hub,
-its face, the slot, four arms with their sides, the full ring, two solar
-panels), the approach markers (as corner ticks), the turning debris, the stars turning with
-the roll, the instruments.
+its face, the slot, four arms with their sides, the ring (as its two
+edges, not filled), two solar panels), the approach markers (as corner
+ticks), the turning debris, the stars turning with the roll, the
+instruments.
 
 Changed (marked `port:` in the source):
 
@@ -71,9 +72,14 @@ Changed (marked `port:` in the source):
   where the axis crosses it, each radius scaled once (`proj_setup`), then
   one 8 x 8 product a corner and axis (`proj_all`, a3d's quarter-square
   tables), not a camera transform a corner.
-- **The ring is an elliptical annulus** drawn a line at a time (its widths
-  kept until its size changes, the lines above and below the middle drawn
-  together), not 16 quads alternately shaded: turned, it looks the same.
+- **The ring is drawn as its two edges**, thin ellipses at its outer and
+  inner radius (300 and 260), not the original's 16 solid quads
+  alternately shaded: a wire hoop with the arms meeting it. Filling it cost
+  a frame 45-70K cycles; the edges cost 34-70K (the cost is mostly a line's
+  set-up, not its pixels). Both are drawn a line at a time, the lines above
+  and below the middle together, from half widths kept until the ring's
+  size changes. One ellipse alone would gain about 1 frame in 5 seconds
+  more, but reads as a circle, not a ring.
   For speed (see Frame rate): the slot's three lights are left out, the
   panels' dark faces drawn only near, and the markers drawn as corner
   ticks (a quarter of each side from each corner).
@@ -103,24 +109,41 @@ Changed (marked `port:` in the source):
 The log prints `od: ticks5s= frames5s= draw=` every 5 seconds.
 
 - The rules: **25 ticks a second** (the original's), 125-131 in 5 s.
-- The view: **5-6 frames a second** flying by hand (frames5s 25-30; it was
-  20-24), **3.2-4.2** with the autopilot (frames5s 16-21: it rolls all the
-  time, so the whole view is cleared each frame, and it costs about 14K
-  cycles a tick). A frame by hand is about 300K cycles with ANTIC's DMA.
+- The view, flying by hand (the craft held still at a range, a little off
+  the axis, the station spinning): **6.4 frames a second far out**
+  (frames5s 32 at range 770, 28 at 570), **4.2-4.8 near** (21-24 at range
+  400-180). Before the ring was drawn as its edges: 28, 24, 20, 19 and 23.
+  With the autopilot **3.2-4.6** (frames5s 16-23: it rolls all the time,
+  so the whole view is cleared each frame, and it costs ~4.5K cycles a
+  tick).
+- A frame is 278K cycles far out, 320-420K near (with ANTIC's DMA, which
+  takes ~30% of the CPU's time). A frame is shown at the next vertical
+  blank, so it takes a whole number of 1/50 s.
 
-Where a frame by hand goes now: the polygons ~100K (the arms are thin quads
-19 lines tall: ~8K each, nearly all of it a span a line), the ring ~45K,
-the corners ~35K, clearing ~25-33K, the markers ~30K, the planes ~21K, the
-rules and the HUD ~30K.
+Where a frame far out (range 770) goes: the polygons ~76K, the projection
+~57K (proj_all 35K, proj_setup 22K), the ring ~34K, the markers ~30K
+(nearly all of it their lines' pixels), clearing ~27K, the rules ~17K
+(4.4K a tick), the HUD ~8K (21K each time it's redrawn), waiting for the
+vertical blank ~10K. Near, the polygons grow to 100-160K, the ring to
+50-70K and clearing to ~50K.
 
-**Why not 8 frames a second:** with every part near what the 6502 can do
-for it, a frame is still ~280K cycles; 8 a second needs ~220K. The rest
-would have to come from drawing less: the ring as a thin outline (-30K)
-or no arm sides. The station's look was kept instead: **the full ring and
-the arms' side faces stay**.
+**Why not 8 frames a second:** 8 a second is 40 frames in 5 seconds, 222K
+cycles a frame. Far out, a frame is 278K; near, 320-420K. Measured, with
+nothing else changed: no ring at all, 36 far out (29.6 on average over the
+five ranges, against 25.6 now); no markers, 36 (28.8); no arm sides, 33
+(26.6). No one cut reaches 40; the ring, the markers and the arm sides
+together would come close far out, not near. The station keeps its arms'
+sides, panels, hub and slot, and the markers.
 
 The speed passes, in turn:
 
+- detail (port): the ring as its two edges (mostly a byte an edge a line,
+  written on the lines above and below the middle at once; 8-bit sums
+  when the ring is all on the screen across);
+- the markers' ticks in asm (`mk_fast`: the ticks with both ends on the
+  screen drawn unclipped, the rest left to `a3d_line`; 49K to 30K far
+  out); the HUD's numbers by subtracting powers of ten, not dividing, and
+  its text with static locals (32K to 21K a redraw), the same pictures;
 - the planes' scales from a reciprocal table and the radii by quarter
   squares, not divisions and `a3d_mulf` (45K to 21K);
 - clearing only what was drawn while the roll holds (the stars stay put;
@@ -153,9 +176,9 @@ room the fast fill needs.
 
 | | debug build | `RELEASE=1` |
 |---|---|---|
-| program `$2000-` | `$911D` | `$8DEE` |
-| free below the C stack (`$9400`) | 0.7K | 1.5K |
-| LOWRAM `$0C00-` | `$1E98` (4.7K of 5K) | the same |
+| program `$2000-` | `$9256` | `$8F16` |
+| free below the C stack (`$9400`) | 0.4K | 1.2K |
+| LOWRAM `$0C00-` | `$1FDA` (5K less 37 bytes) | the same |
 | zero page | `$82-$BC` | the same |
 | screen | two buffers `$A010` / `$B010`, display lists `$AF10` / `$BF10`, text rows `$AF80`; PMG `$9800` | |
 
@@ -175,8 +198,8 @@ on the host.
 
 ## Not done yet
 
-- The frame rate: 5-6 frames a second is slow for the original's 25 (see
-  above: more needs less drawn).
+- The frame rate: 4-6.4 frames a second by hand is slow for the original's
+  25 (see above: 8 needs more drawn less, not only the ring).
 - The help pages, the big DOCKED / GAME OVER text, music.
 - NTSC: the ticks count 17 ms frames, so the speed is right, the colours
   are PAL's.

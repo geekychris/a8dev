@@ -88,8 +88,8 @@ def main():
         px, py = -s * 10, c * 10
         poly([(P_RING, ax + px, ay + py), (P_RING, bx + px, by + py), (P_ARMB, bx + px, by + py), (P_ARMB, ax + px, ay + py)], "arm1")
         arms.append([(P_RING, ax + px, ay + py), (P_RING, bx + px, by + py), (P_RING, bx - px, by - py), (P_RING, ax - px, ay - py)])
-    # port: the ring (radius 260-300 at z -60) is an annulus drawn a line at a
-    # time (proj.s ring_draw), not 16 quads: it looks the same turned
+    # port: the ring (radius 260-300 at z -60) is drawn as its two edges, a
+    # line at a time (proj.s ring_draw), not 16 solid quads: for speed
     for a in arms:
         poly(a, "arm")
     # the face, the slot and its lights
