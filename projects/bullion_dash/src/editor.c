@@ -40,9 +40,10 @@ static uint8_t move_delay, status_timer;
 static uint8_t redraw;                              /* the editor screen needs drawing */
 static uint8_t shown_x = 255, shown_y, shown_idx = 255;
 static uint8_t edit_grid[GRID_COLS * GRID_ROWS / 2];   /* the level while it is test-played */
-/* port: S / L; in the screen's memory (SCRBSS, not zeroed: read only once
-   have_kept says it was written), which leaves room in MAIN for the guard fix */
-#pragma bss-name (push, "SCRBSS")
+/* port: S / L; below the C stack (EDITBSS, $9600: not zeroed, read only
+   once have_kept says it was written), which leaves room in MAIN for the
+   guard fix. (It was in SCRBSS, whose top page is gridbfs's queue at $9500.) */
+#pragma bss-name (push, "EDITBSS")
 static uint8_t kept[GRID_COLS * GRID_ROWS / 2];
 #pragma bss-name (pop)
 static uint8_t have_kept;

@@ -99,6 +99,9 @@ with Emulator() as e:
     check("the cursor went where the taps took it", ed == (2, 14), str(ed))
     e.screenshot(SHOTS / "editor.png", scale=2)
     e.log()
+    tap(e, "S")                            # keep the level (S / L)
+    e.run(10)
+    kept = e.read_mem("_kept", 224)
     tap(e, "RETURN")
     check("RETURN test-plays the level", e.run_until("bullion: test play", 60))
     e.run(20)
@@ -111,6 +114,8 @@ with Emulator() as e:
     e.screenshot(SHOTS / "cleared.png", scale=2)
     log += e.log()
     check("back to the editor", "bullion: state=editor" in log.split("complete")[-1] or e.run_until("bullion: state=editor", 200))
+    check("the kept level (S) survives the test play's pathfinding", e.read_mem("_kept", 224) == kept
+          and any(kept), kept.hex()[:40])
     e.run(10)
     tap(e, "ESC")
     check("ESC: the title", e.run_until("bullion: title", 100))

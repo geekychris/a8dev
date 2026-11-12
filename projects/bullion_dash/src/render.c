@@ -43,8 +43,16 @@ static uint8_t dl_game[32], dl_title[32], status_mem[20], msg_mem[40], grid_mem[
 #define C_LOOT   A8_COLOR(1, 14)
 
 uint8_t render_editor_look;
+/* (made at start-up, so they can live where memory isn't zeroed: frames_l
+   in SCRBSS below gridbfs's queue at $9500, row_addr in EDITBSS; room in
+   MAIN for the guard fix) */
+#pragma bss-name (push, "EDITBSS")
 static uint8_t *row_addr[GRID_ROWS];
-static uint8_t frames_r[10 * 8], frames_l[10 * 8];   /* right / left facing */
+#pragma bss-name (pop)
+static uint8_t frames_r[10 * 8];                      /* right facing */
+#pragma bss-name (push, "SCRBSS")
+static uint8_t frames_l[10 * 8];                      /* left facing */
+#pragma bss-name (pop)
 
 static uint8_t scode(char c)
 {
