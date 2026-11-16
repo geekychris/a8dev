@@ -21,6 +21,6 @@
 #define A_COUNT 15
 extern const uint8_t tile_chars[A_COUNT * 16];
 extern const uint8_t belt_frames[16 * 16];      /* 8 frames left belt, 8 right: 16 bytes (2 chars) */
-extern const uint8_t miner_gfx[4 * 16];          /* walk cycle, facing right */
+extern const uint8_t miner_gfx[8 * 16];          /* walk cycle, facing right */
 extern const uint8_t guard_gfx[3 * 2 * 16];      /* colour 4, 5, 6 x 2 frames */
 #endif

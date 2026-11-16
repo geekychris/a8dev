@@ -41,6 +41,13 @@ collision snaps are unchanged, and the logic runs at a fixed 50 ticks a
 second, as on the Amiga. The proof: the demo (`src/demo.h`, the fastest
 route through each cavern found by the Spectrum port's solver over the same
 `game_tick()`) plays all six caverns here without losing a life.
+The original's later fixes (amiga_games #53) are in too: Hazard Bay's row 5
+meets the right wall, Guardian Alley's first guardian patrols on the top
+ledge (y 32, not inside it at 48), and the walk cycle shows all eight of
+the sheet's frames. With the guardian on the ledge the solver's fastest
+route through Guardian Alley is 259 ticks (211 before), the same count as
+the original's and the ST port's checks.
+
 Port changes (marked `port:` in the Spectrum port's source and here):
 
 - the caverns are stored as plain bytes (`tools/mklevels.py`), not zxrle
@@ -71,7 +78,7 @@ Port changes (marked `port:` in the Spectrum port's source and here):
 
 ## Memory and speed
 
-- Program, data and variables `$2000-$6F92` (20K; the XEX is 18.4K in a
+- Program, data and variables `$2000-$701C` (20K; the XEX is 18.4K in a
   release build). Character set `$A000`, cavern `$A400`, display lists and
   title from `$A700`; players at `$9800`.
 - No 130XE banks: it runs on a 64K 800XL (the test boots it there) and on a

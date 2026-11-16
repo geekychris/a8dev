@@ -37,7 +37,7 @@
 #define BAR_CH    63                      /* '_' becomes a full block: the air bar */
 
 static uint8_t *room_row[ROWS];
-static uint8_t frames_l[4 * 16];          /* the miner facing left */
+static uint8_t frames_l[8 * 16];          /* the miner facing left */
 static uint8_t music_on = 1;
 
 /* ------------------------------------------------------------ log, probe */

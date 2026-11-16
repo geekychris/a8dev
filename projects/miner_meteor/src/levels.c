@@ -13,8 +13,10 @@ static const GuardianSpec LVL_NONE[] = {
 };
 
 static const GuardianSpec LVL3_GUARDS[] = {
-    /* Two horizontal patrols on the empty corridors + one on the top ledge. */
-    { 0, 4, +2, 0, 32, 48, 32, 288 },
+    /* Two horizontal patrols on the empty corridors + one on the top ledge.
+       (the original's fix, amiga_games #53: the first was at y 48, inside
+       the row-3 ledge, not on it) */
+    { 0, 4, +2, 0, 32, 32, 32, 288 },
     { 0, 6, -2, 0, 240, 128, 32, 288 },
     { 0, 5, +2, 0, 128, 176, 96, 224 },
     { 0xFF, 0, 0, 0, 0, 0, 0, 0 }

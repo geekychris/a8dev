@@ -47,7 +47,7 @@ typedef struct {
 typedef struct {
     plat_body b;            /* x, y, vx, vy, on_ground */
     uint8_t facing;         /* 0 = left, 1 = right */
-    uint8_t frame;          /* walk cycle 0..3 */
+    uint8_t frame;          /* walk cycle 0..7 */
     uint8_t jump_lock;
 } Player;
 

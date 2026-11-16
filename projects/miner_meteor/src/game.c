@@ -163,7 +163,7 @@ static void update_player(uint8_t input)
     plat_move_y(&p->b, GRAVITY, MAX_FALL_SPEED);
 
     /* Animation frame - every 6 ticks, when actually moving. */
-    if (p->b.vx != 0 && gs.phase6 == 0) p->frame = (p->frame + 1) & 3;
+    if (p->b.vx != 0 && gs.phase6 == 0) p->frame = (p->frame + 1) & 7;   /* (the original's fix: all 8 walk frames) */
 
     /* Collectibles + hazard tiles at the player's centre. */
     cx = p->b.x + 8;
