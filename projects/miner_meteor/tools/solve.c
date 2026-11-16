@@ -4,8 +4,8 @@
  * same way whatever the player does, so states in a layer differ only by
  * the player, the keys and the floors; duplicates are dropped by a hash of
  * those. When a layer would pass MAX_STATES, the states with the most keys
- * collected are expanded first and the rest dropped (a beam), which only
- * cavern 6 needs. Prints, per cavern, the fastest route as runs of input flags.
+ * collected, then nearest the next key (or the open exit), are expanded
+ * first and the rest dropped (a beam), which caverns 5 and 6 need. Prints, per cavern, the fastest route as runs of input flags.
  *
  *   tools/solve.sh            (builds this and writes tools/routes.json + src/demo.h)
  */
@@ -58,16 +58,37 @@ static uint32_t *order;
 static GameState *tmp;
 static Link *ltmp;
 static const GameState *sort_base;
+static uint32_t *dist;                   /* per state of the layer being sorted */
+
+/* Manhattan distance (y doubled) from the player to the nearest key, or to
+   the exit once it is open */
+static uint32_t goal_dist(const GameState *s)
+{
+    uint32_t best = 0xFFFFFFFFu, i;
+    for (i = 0; i < GRID_H * GRID_W; i++) {
+        uint8_t k = s->kind[i];
+        if (k == T_KEY || (k == T_EXIT && s->keys_remaining == 0)) {
+            int32_t dx = (int32_t)(i % GRID_W) * TILE_W - s->player.b.x;
+            int32_t dy = (int32_t)(i / GRID_W) * TILE_H - s->player.b.y;
+            uint32_t d = (uint32_t)(dx < 0 ? -dx : dx) + 2u * (uint32_t)(dy < 0 ? -dy : dy);
+            if (d < best) best = d;
+        }
+    }
+    return best;
+}
+
 static int by_keys(const void *a, const void *b)
 {
-    const GameState *x = &sort_base[*(const uint32_t *)a], *y = &sort_base[*(const uint32_t *)b];
+    uint32_t ia = *(const uint32_t *)a, ib = *(const uint32_t *)b;
+    const GameState *x = &sort_base[ia], *y = &sort_base[ib];
     if (x->keys_remaining != y->keys_remaining) return x->keys_remaining - y->keys_remaining;
+    if (dist[ia] != dist[ib]) return dist[ia] < dist[ib] ? -1 : 1;
     return (int)(*(const uint32_t *)a) - (int)(*(const uint32_t *)b);
 }
 static void sort_layer(uint32_t layer, uint32_t n)
 {
     uint32_t i;
-    for (i = 0; i < n; i++) order[i] = i;
+    for (i = 0; i < n; i++) { order[i] = i; dist[i] = goal_dist(&cur[i]); }
     sort_base = cur;
     qsort(order, n, sizeof(uint32_t), by_keys);
     for (i = 0; i < n; i++) { tmp[i] = cur[order[i]]; ltmp[i] = links[layer][order[i]]; }
@@ -149,12 +170,13 @@ int main(int argc, char **argv)
     FILE *json, *demo;
     uint8_t l;
     int ok = 1;
-    if (argc < 3) { fprintf(stderr, "usage: solve routes.json demo.h\n"); return 2; }
+    if (argc < 3) { fprintf(stderr, "usage: solve routes.json demo.h [cavern 0-5]\n"); return 2; }
     cur = malloc(sizeof(GameState) * MAX_STATES);
     nxt = malloc(sizeof(GameState) * MAX_STATES);
     table = malloc(sizeof(uint64_t) * TABLE);
     stamp = calloc(TABLE, sizeof(uint16_t));
     order = malloc(sizeof(uint32_t) * MAX_STATES);
+    dist = malloc(sizeof(uint32_t) * MAX_STATES);
     tmp = malloc(sizeof(GameState) * MAX_STATES);
     ltmp = malloc(sizeof(Link) * MAX_STATES);
     json = fopen(argv[1], "w");
@@ -163,6 +185,7 @@ int main(int argc, char **argv)
     fprintf(demo, "/* made by tools/solve.sh: the fastest route through each cavern, found by a\n"
                   "   search over game_tick() on the host. {input flags, ticks}; 0xFF ends a cavern. */\n"
                   "static const uint8_t demo_route[][2] = {\n");
+    if (argc > 3) { l = (uint8_t)atoi(argv[3]); ok &= solve(l, json, demo, 1); } else
     for (l = 0; l < num_levels; l++) ok &= solve(l, json, demo, l == num_levels - 1);
     fprintf(json, "]\n");
     fprintf(demo, "};\n");

@@ -1,5 +1,6 @@
-; Miner Meteor caverns: the original's levels.cpp rows, unchanged (the three
-; rows the original marks "bug in the original: unwinnable" are its fixed rows).
+; Miner Meteor caverns: the original's levels.cpp rows (the rows the original
+; marks "bug in the original: unwinnable" are its fixed rows; Hazard Bay's and
+; Collapsing Attic's moved ledges came with the landing fix, amiga_games #55).
 ; Packed by sdk/tools/levelpack.py: tools/make_data.sh writes src/levels_data.c.
 size 20 15
 legend . 0  # 1  K 2  E 3  c 4  < 5  > 6  ^ 7  P 8
@@ -31,8 +32,10 @@ room HAZARD BAY
 #..................#
 #.^^^^....K....^^^.#
 #..................#
-#..............##..#
-#....##............#
+; row 9: bug in the original: unwinnable - this ledge was in row 10, too low to jump to row 5 from
+; row 10: was "#....##............#"
+#....##........##..#
+#..................#
 #..................#
 #..P.....^.^^....E.#
 ####################
@@ -76,12 +79,15 @@ room COLLAPSING ATTIC
 ####################
 #..................#
 #.........K........#
-#........cccc......#
+; row 3: bug in the original: unwinnable - out of jump reach, was "#........cccc......#"
+; rows 7-8: bug in the original: unwinnable - this ledge and key were out of reach,
+; were "#..............K...#" / "#............cccc..#"
+#......cccc........#
 #..................#
 #..K...............#
 #.cccc.............#
-#..............K...#
-#............cccc..#
+#........K.........#
+#.......cccc.......#
 #..................#
 #....K.............#
 #..cccc............#
