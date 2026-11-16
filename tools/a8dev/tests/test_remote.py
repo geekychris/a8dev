@@ -243,8 +243,37 @@ def test_devbench():
         check("REST run_until", st == 200 and r["found"], str(r))
         st, png = req("GET", f"/api/sessions/{pid}/screen.png", raw=True)
         check("screen.png is a PNG", st == 200 and png[:4] == b"\x89PNG")
+        st, png = req("GET", f"/api/sessions/{pid}/screen.png?t=123", raw=True)
+        check("screen.png ignores the pages' t= cache-buster", st == 200 and png[:4] == b"\x89PNG")
         st, r = req("GET", "/api/cmd/regs")
         check("GET on the selected session", st == 200 and "PC" in r)
+        st, page = req("GET", "/arcade", raw=True)
+        check("the arcade page", st == 200 and b"A8 Arcade" in page)
+        check("the DevBench links to the arcade", b'href="/arcade"' in ui)
+        st, a = req("GET", "/api/arcade")
+        dirs = {d.name for d in (ROOT / "projects").iterdir() if (d / "Makefile").exists()}
+        listed = {g["project"] for g in a["games"]} | {g["project"] for g in a["others"]}
+        check("GET /api/arcade lists every project (games + others)", st == 200 and listed == dirs,
+              str(dirs ^ listed))
+        check("every game in projects/ with an arcade.json is a game there",
+              {g["project"] for g in a["games"]} == {d for d in dirs if (ROOT / "projects" / d / "arcade.json").exists()})
+        check("no arcade.json problems", not [g for g in a["games"] if g.get("problem")],
+              str([(g["project"], g["problem"]) for g in a["games"] if g.get("problem")]))
+        check("every game has a picture", all(g["has_picture"] for g in a["games"]),
+              str([g["project"] for g in a["games"] if not g["has_picture"]]))
+        st, png = req("GET", "/api/arcade/picture/nova_defense.png", raw=True)
+        check("a game's picture", st == 200 and png[:4] == b"\x89PNG")
+        st, r = req("POST", "/api/arcade/play", {"game": "hello", "window": False, "direct": True})
+        check("POST /api/arcade/play direct: the game on its own, to its ready line",
+              st == 200 and r.get("via") == "direct" and r.get("started"), str(r)[:300])
+        if st == 200:
+            req("DELETE", f"/api/sessions/{r['session']['pid']}")
+        if a.get("built"):
+            st, r = req("POST", "/api/arcade/play", {"game": "nova_defense", "window": False})
+            check("POST /api/arcade/play boots the arcade disk and starts the game from the menu",
+                  st == 200 and r.get("via") == "menu" and r.get("started"), str(r)[:300])
+            if st == 200:
+                req("DELETE", f"/api/sessions/{r['session']['pid']}")
         check("unknown command -> 400", req("GET", "/api/cmd/nope")[0] == 400)
         check("bad session -> 404", req("GET", "/api/sessions/1/cmd/status")[0] == 404)
         init = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {

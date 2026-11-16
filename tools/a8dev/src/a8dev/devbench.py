@@ -1,6 +1,6 @@
 """DevBench: web UI + REST API + MCP over HTTP, on one port (default :3680).
 
-    ./a8 devbench [--port 3680] [--open]
+    ./a8 devbench [--port 3680] [--open]     (--open opens the arcade page in a browser)
 
     /                                        web UI (screen, log, input, debugger, console)
     /api/health
@@ -15,10 +15,14 @@
     /api/sessions/{pid}/cmd/{command}        ... on a specific session
     /api/screen.png                          current frame (?scale=2&border=0)
     /arcade                                  the arcade: every game with its picture, Play buttons
-    /api/arcade                              the arcade's games (manifest) + whether the disk image is built
-    /api/arcade/picture/{game}.png           a game's menu picture
+    /api/arcade                              every project: the games (arcade.json) with on_image / built /
+                                             note / problem, the other projects (tests, demos) with why
+    /api/arcade/picture/{game}.png           a game's picture (or another project's screenshot)
     /api/arcade/build            POST        ./a8 arcade --image-only (games, menu, ATR image)
-    /api/arcade/play             POST        {"game", "window": true}: boot the ATR image, choose the game
+    /api/arcade/play             POST        {"game", "window": true, "direct": false, "resume": false}: boot
+                                             the ATR and choose the game from the menu; a game not on the disk
+                                             (or "direct") runs on its own, built first if need be. resume: a
+                                             headless session free-runs once the game is up
     /mcp                                     the MCP server (streamable HTTP)
 """
 from __future__ import annotations
@@ -220,7 +224,8 @@ async def run_cmd(request: Request):
 
 
 async def screen_png(request: Request):
-    a = {k: _coerce(v) for k, v in request.query_params.items()}
+    # t= is the pages' cache-buster, not a screenshot argument
+    a = {k: _coerce(v) for k, v in request.query_params.items() if k != "t"}
     try:
         res = await run_in_threadpool(bench.call, request.path_params.get("pid"), "screenshot", a)
     except LookupError as ex:
@@ -235,61 +240,97 @@ async def arcade_page(request: Request):
     return FileResponse(WEB / "arcade.html")
 
 
+def _public(g: dict) -> dict:
+    """A catalog entry without host paths (has_picture instead)."""
+    out = {k: v for k, v in g.items() if k not in ("picture", "image_picture", "ready")}
+    out["has_picture"] = bool(g.get("image_picture") or g.get("picture"))
+    return out
+
+
 async def arcade_list(request: Request):
     from . import arcade
-    try:
-        m = await run_in_threadpool(arcade.manifest)
-    except arcade.ArcadeError as ex:
-        return err(str(ex), 500)
-    built = bool(m.get("image")) and Path(m["image"]).exists()
-    return ok({"built": built, "image": m.get("image"), "games": [
-        {k: g.get(k) for k in ("project", "title", "machine", "controls", "description", "index")}
-        for g in m["games"]]})
+    c = await run_in_threadpool(arcade.catalog)
+    return ok({**c, "games": [_public(g) for g in c["games"]], "others": [_public(g) for g in c["others"]]})
+
+
+def _find(c: dict, name: str) -> dict | None:
+    n = (name or "").lower()
+    for g in c["games"] + c["others"]:
+        if n in (g["project"].lower(), g["title"].lower()):
+            return g
+    return None
 
 
 async def arcade_picture(request: Request):
     from . import arcade
-    import io
-    try:
-        g = arcade.find_game(arcade.manifest()["games"], request.path_params["game"])
-    except arcade.ArcadeError as ex:
-        return err(str(ex), 404)
-    p = g.get("image_picture")
-    if p and Path(p).exists():
-        return FileResponse(p, media_type="image/png")
-    buf = io.BytesIO()
-    (await run_in_threadpool(arcade.picture, g["picture"]))[1].save(buf, "PNG")
-    return Response(buf.getvalue(), media_type="image/png")
+    g = _find(await run_in_threadpool(arcade.catalog), request.path_params["game"])
+    if g is None:
+        return err(f"no project {request.path_params['game']!r}", 404)
+    if not g.get("picture"):
+        return err(f"{g['project']} has no picture", 404)
+    return FileResponse(g["picture"], media_type="image/png")
 
 
 async def arcade_build(request: Request):
     return ok(await run_in_threadpool(_run, [str(ROOT / "a8"), "arcade", "--image-only"]))
 
 
+def _spawn(program: str, window: bool, **kw) -> dict:
+    c = SessionClient.spawn(program, window=window, **kw)
+    with bench.lock:
+        bench.clients[c.info["pid"]] = c
+        bench.locks[c.info["pid"]] = threading.Lock()
+        bench.selected = c.info["pid"]
+    return c.info
+
+
 async def arcade_play(request: Request):
+    """Play a game: from the arcade disk's menu when it is on the disk, otherwise
+    (or with "direct": true) its own program in a session, built first if need be.
+    "window": false keeps it headless (the arcade page shows it live; "resume":
+    true lets it free-run once it has started)."""
     from . import arcade
     a = await args_of(request)
-    image = arcade.OUT / "arcade.atr"
-    if not image.exists():
-        return err("the arcade isn't built: POST /api/arcade/build (or ./a8 arcade)", 404)
-
-    def spawn():
-        c = SessionClient.spawn(str(image), window=a.get("window", True) is not False)
-        with bench.lock:
-            bench.clients[c.info["pid"]] = c
-            bench.locks[c.info["pid"]] = threading.Lock()
-            bench.selected = c.info["pid"]
-        return c.info
-    try:
-        info = await run_in_threadpool(spawn)
-    except ProtocolError as ex:
-        return err(str(ex), 500)
-    if not a.get("game"):
-        return ok({"session": info})
-    res = await call(info["pid"], "arcade_play", {"game": a["game"]})
-    if res.status_code != 200:
-        return res
-    return ok({"session": info, **json.loads(res.body)})
+    window = a.get("window", True) is not False
+    c = await run_in_threadpool(arcade.catalog)
+    g = _find(c, a["game"]) if a.get("game") else None
+    if a.get("game") and g is None:
+        return err(f"no game {a['game']!r}; one of {', '.join(x['project'] for x in c['games'])}", 404)
+    if g is None or (g.get("on_image") and not a.get("direct")):
+        image = arcade.OUT / "arcade.atr"
+        if not image.exists():
+            return err("the arcade isn't built: POST /api/arcade/build (or ./a8 arcade)", 404)
+        try:
+            info = await run_in_threadpool(_spawn, str(image), window)
+        except ProtocolError as ex:
+            return err(str(ex), 500)
+        if g is None:
+            return ok({"session": info, "via": "menu"})
+        res = await call(info["pid"], "arcade_play", {"game": g["project"]})
+        if res.status_code != 200:
+            return res
+        out = {"session": info, "via": "menu", **json.loads(res.body)}
+    else:
+        proj = ROOT / "projects" / g["project"]
+        if not g.get("built"):
+            r = await run_in_threadpool(_run, [str(ROOT / "bin" / "a8-make"), "-C", str(proj)])
+            if not r["ok"]:
+                return err(f"{g['project']} failed to build:\n{r['output'][-1500:]}", 500)
+        try:
+            prog = resolve_program(g["project"])
+            info = await run_in_threadpool(_spawn, prog, window)
+        except (FileNotFoundError, ProtocolError) as ex:
+            return err(str(ex), 500)
+        out = {"session": info, "via": "direct", "game": g["title"]}
+        ready = g.get("ready")
+        if ready and not window:
+            res = await call(info["pid"], "run_until", {"text": ready, "max_frames": 3000})
+            out["started"] = res.status_code == 200 and json.loads(res.body).get("found", False)
+        else:
+            out["started"] = True
+    if a.get("resume") and not window:
+        await call(out["session"]["pid"], "resume", {})
+    return ok(out)
 
 
 ROUTES = [
@@ -326,6 +367,8 @@ def main(port: int = 3680, host: str = "127.0.0.1", open_browser: bool = False):
     import uvicorn
     url = f"http://{host}:{port}/"
     print(f"Atari 8-bit DevBench on {url}  (REST /api, MCP /mcp)", flush=True)
-    if open_browser:
-        threading.Timer(1.0, lambda: os.system(f"open {url} >/dev/null 2>&1 || xdg-open {url} >/dev/null 2>&1")).start()
+    print(f"  the arcade (every game, Play buttons): {url}arcade", flush=True)
+    if open_browser:     # --open lands on the arcade; its header links back to the DevBench
+        page = f"{url}arcade"
+        threading.Timer(1.0, lambda: os.system(f"open {page} >/dev/null 2>&1 || xdg-open {page} >/dev/null 2>&1")).start()
     uvicorn.run(make_app(), host=host, port=port, log_level="warning")
