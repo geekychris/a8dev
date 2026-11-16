@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="A8dev logo" width="180">
+</p>
+
 # a8dev
 
 End-to-end development of Atari 8-bit programs (400/800, XL/XE, 128K 130XE)
