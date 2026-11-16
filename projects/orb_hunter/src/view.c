@@ -71,6 +71,7 @@ extern const uint8_t sh_drake1_l[24], sh_drake1_r[24], sh_orb0[12];
 #define C_METAL2   A8_COLOR(0, 12)
 #define C_ITEM     A8_COLOR(10, 12)
 #define C_BEAM     A8_COLOR(12, 12)
+#define C_FLASH    A8_COLOR(0, 14)        /* a creature hit */
 
 /* the areas (the original names them by the room's row): rock, its highlight */
 static const uint8_t area_rock[6][2] = {
@@ -163,7 +164,10 @@ static void font_init(void)
 }
 
 /* ---- the room */
-static uint8_t lava_x[48], lava_r[48], n_lava;
+static uint8_t n_lava;
+#pragma bss-name (push, "PMGBSS")      /* (orb_hunter.cfg: $9800-$9AFF) */
+static uint8_t lava_x[48], lava_r[48];
+#pragma bss-name (pop)
 
 /* an orb (an item not taken yet) at its tile: 4 pixels x 6 lines of
    colour 3, byte-aligned */
@@ -252,13 +256,15 @@ static void lava_step(void)
 
 /* ---- HUD */
 static WORD hud_health = -1, hud_miss = -1;
-static uint8_t hud_area = 0xFF, hud_msg;
+static uint8_t hud_area = 0xFF, hud_msg, area_t;
+static int32_t hud_score;
 
 void view_hud_reset(void)
 {
     hud_health = hud_miss = -1;
-    hud_area = 0xFF;
-    hud_msg = 0;
+    hud_score = -1;
+    hud_msg = area_t = 0;
+    memset(HUD, 0, 20);
 }
 
 void view_message(const char *s)
@@ -266,12 +272,29 @@ void view_message(const char *s)
     memset(HUD, 0, 20);
     if (s) put6(HUD + ((20 - strlen(s)) >> 1), s, 1);
     hud_msg = s != 0;
+    area_t = 0;
     if (!s) view_hud_reset();
+}
+
+/* six decimal digits of v at d, by subtraction (cc65's 32-bit divide
+   is slow) */
+static const uint32_t pow10[5] = {100000, 10000, 1000, 100, 10};
+void dec6(char *d, uint32_t v)
+{
+    uint8_t k;
+    char c;
+    for (k = 0; k < 5; ++k) {
+        for (c = '0'; v >= pow10[k]; ++c) v -= pow10[k];
+        *d++ = c;
+    }
+    *d = (char)('0' + (uint8_t)v);
 }
 
 static void view_hud(void)
 {
     WORD v;
+    char buf[7];
+    if (area_t && !--area_t) view_message(0);     /* the area's name ends */
     if (hud_msg) return;
     if (h_health != hud_health) {
         hud_health = h_health;
@@ -286,12 +309,20 @@ static void view_hud(void)
             num6(HUD + 6, (uint16_t)h_missiles, 2, 1);
         }
     }
+    /* the score (the original's fix: kept but never shown) where the area's
+       name was; the name shows for a while when an area is entered */
+    if (gs.score != hud_score) {
+        hud_score = gs.score;
+        dec6(buf, (uint32_t)gs.score);
+        buf[6] = 0;
+        put6(HUD + 14, buf, 2);
+    }
     if ((uint8_t)gs.room_y != hud_area) {
         uint8_t a = (uint8_t)gs.room_y;
         hud_area = a;
         if (a > 5) a = 5;
-        memset(HUD + 9, 0, 11);
-        put6(HUD + 20 - strlen(area_names[a]), area_names[a], 2);
+        view_message(area_names[a]);
+        area_t = 80;
     }
 }
 
@@ -358,12 +389,16 @@ static void view_hunter(void)
 
 static void view_enemies(void)
 {
-    static uint8_t i, n, key;
+    static uint8_t i, n, key, c;
     static WORD x, y;
     static const uint8_t *s;
     n = 2;
     for (i = 0; i < MAX_ENEMIES && n < 4; ++i) {
         if (!e_on[i]) continue;
+        /* a creature flashes for a while when hit (the original's fix; here
+           white, not hidden: a hidden player costs a redraw to bring back) */
+        c = (e_hit_timer[i] && (gs.frame & 2)) ? C_FLASH
+            : e_type[i] == ENEMY_TURRET ? C_METAL2 : C_ENEMY;
         x = FIX_INT(e_x[i]);
         y = FIX_INT(e_y[i]);
         switch (e_type[i]) {
@@ -381,14 +416,14 @@ static void view_enemies(void)
                 PUT(2, x, y, w ? sh_drake1_l : sh_drake0_l, 24, (uint8_t)(32 + w));
                 PUT(3, x + 16, y, w ? sh_drake1_r : sh_drake0_r, 24, (uint8_t)(34 + w));
             }
-            PCOLR_(2, C_ENEMY);
-            PCOLR_(3, C_ENEMY);
+            PCOLR_(2, c);
+            PCOLR_(3, c);
             n = 4;
             continue;
         }
         }
         PUT(n, x, y, s, 12, key);
-        PCOLR_(n, e_type[i] == ENEMY_TURRET ? C_METAL2 : C_ENEMY);
+        PCOLR_(n, c);
         ++n;
     }
     for (; n < 4; ++n) hide(n);
@@ -489,6 +524,7 @@ void view_game(void)
     view_hide();
     SDLSTL = (uint16_t)DL_GAME;
     memset(HUD, 0, 20);
+    hud_area = 0xFF;
     COLOR0 = A8_COLOR(12, 10);             /* the HUD: energy */
     COLOR1 = A8_COLOR(1, 14);              /* rockets, messages */
     COLOR2 = C_ITEM;                       /* the area */
@@ -525,12 +561,11 @@ void view_title(const char (*names)[4], const uint32_t *scores)
     d = title_line(d, 6, "HIGH SCORES", 3);
     for (i = 0; i < 5; ++i) {
         uint32_t v = scores[i];
-        uint8_t k;
         line[0] = (char)('1' + i);
         line[1] = ' ';
         memcpy(line + 2, names[i], 3);
         line[5] = ' ';
-        for (k = 11; k > 5; --k) { line[k] = (char)('0' + (uint8_t)(v % 10)); v /= 10; }
+        dec6(line + 6, v);
         line[12] = 0;
         d = title_line(d, 6, line, i < 3 ? 0 : 2);
     }

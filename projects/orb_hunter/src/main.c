@@ -245,18 +245,28 @@ static void play(void)
                     view_message("ENERGY DEPLETED");
                     LOG_S("orb: dead\n");
                     break;
-                case STATE_GAMEOVER:
-                    view_message("GAME OVER");
+                case STATE_GAMEOVER: {
+                    /* the score with it (the original's fix: never shown) */
+                    static char go[17] = "GAME OVER ";
+                    dec6(go + 10, (uint32_t)gs.score);
+                    view_message(go);
                     snd_music(0);
                     LOG_N("orb: gameover score=", gs.score);
                     LOG_END();
                     break;
+                }
                 }
                 break;
             }
             /* port: game over waits for a new press of fire (or its time) */
             if (gs.state == STATE_GAMEOVER && gs.state_timer < 130 && (in_new & IN_FIRE))
                 gs.state = STATE_TITLE;
+            /* the item's message: its 90 frames, or a new press of fire
+               (the original's fix) */
+            if (gs.state == STATE_ITEM_GET && (in_new & (IN_FIRE | IN_START))) {
+                gs.state = STATE_PLAYING;
+                view_message(0);
+            }
         }
         if (gs.state == STATE_TITLE) {
             view_hide();

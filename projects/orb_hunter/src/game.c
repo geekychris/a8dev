@@ -41,15 +41,18 @@ WORD h_health, h_max_energy, h_missiles, h_max_missiles;
 uint8_t h_gun_timer, h_invuln_timer, h_bomb_timer, h_anim_timer;
 uint8_t h_has_roll_form, h_has_bombs, h_has_missiles, h_has_long_beam, h_has_ice_beam,
         h_has_spin_strike, h_has_high_jump, h_has_heat_suit;
-/* the rest */
+/* the rest; the creatures (game_load_room clears e_on), the shots, bombs
+   and sparks live in the PMG area's free pages ($9800-$9AFF: single-line
+   players start at $9B00; orb_hunter.cfg) */
+#pragma bss-name (push, "PMGBSS")
 Fixed e_x[MAX_ENEMIES], e_y[MAX_ENEMIES], e_dx[MAX_ENEMIES], e_dy[MAX_ENEMIES];
 uint8_t e_type[MAX_ENEMIES], e_on[MAX_ENEMIES], e_facing[MAX_ENEMIES], e_state[MAX_ENEMIES],
         e_anim_frame[MAX_ENEMIES];
 int8_t e_health[MAX_ENEMIES];
 WORD e_timer[MAX_ENEMIES], e_fire_timer[MAX_ENEMIES];
-/* the shots, bombs and sparks live in the PMG area's free pages
-   ($9800-$9AFF: single-line players start at $9B00; orb_hunter.cfg) */
-#pragma bss-name (push, "PMGBSS")
+/* the frames left of a creature's hit flash (the original's fix: its "flash
+   when hit" test used the AI's timer, which always runs; view.c) */
+uint8_t e_hit_timer[MAX_ENEMIES];
 Fixed b_x[MAX_BULLETS], b_y[MAX_BULLETS], b_dx[MAX_BULLETS], b_dy[MAX_BULLETS];
 uint8_t b_life[MAX_BULLETS], b_on[MAX_BULLETS], b_type[MAX_BULLETS], b_power[MAX_BULLETS];
 Fixed bm_x[MAX_BOMBS], bm_y[MAX_BOMBS];
@@ -118,9 +121,11 @@ static const EnemySpawn room_enemies[] = {
     { 4, 1,  8, 13, ENEMY_CRAWLER }, { 4, 2, 10, 13, ENEMY_FLYER },
     { 3, 3,  8, 13, ENEMY_CRAWLER },
     /* Citadel rooms */
-    { 3, 4,  6, 13, ENEMY_TURRET },  { 3, 4, 14, 13, ENEMY_CRAWLER },
-    { 4, 4,  5, 13, ENEMY_HOPPER },  { 4, 4, 15, 13, ENEMY_TURRET },
-    { 5, 4,  8, 13, ENEMY_FLYER },   { 5, 4, 14, 13, ENEMY_CRAWLER },
+    /* (the original's fix: row 12, on the floor; the citadel's floor is
+       three rows thick (13-15), so at row 13 they were inside it) */
+    { 3, 4,  6, 12, ENEMY_TURRET },  { 3, 4, 14, 12, ENEMY_CRAWLER },
+    { 4, 4,  5, 12, ENEMY_HOPPER },  { 4, 4, 15, 12, ENEMY_TURRET },
+    { 5, 4,  8, 12, ENEMY_FLYER },   { 5, 4, 14, 12, ENEMY_CRAWLER },
     /* Roll form area */
     { 1, 4,  8,  9, ENEMY_CRAWLER },
     /* Boss rooms */
@@ -253,6 +258,7 @@ void game_load_room(void)
             e_timer[ei] = 0;
             e_anim_frame[ei] = 0;
             e_fire_timer[ei] = 0;
+            e_hit_timer[ei] = 0;
             e_dx[ei] = e_dy[ei] = 0;
 
             switch (e_type[ei]) {
@@ -601,6 +607,7 @@ static void update_bombs(void)
                 if (edx > -BOMB_RADIUS && edx < BOMB_RADIUS &&
                     edy > -BOMB_RADIUS && edy < BOMB_RADIUS) {
                     e_health[j] -= 3;
+                    e_hit_timer[j] = HIT_FLASH_FRAMES;
                 }
             }
 
@@ -657,6 +664,7 @@ static void update_enemies(void)
         ef = e_facing[i]; es = e_state[i];
         et = ++e_timer[i];
         eft = ++e_fire_timer[i];
+        if (e_hit_timer[i]) --e_hit_timer[i];
 
         switch (e_type[i]) {
             case ENEMY_CRAWLER:
@@ -851,6 +859,7 @@ static void check_bullet_enemy(void)
 
             if (dx > -rad && dx < rad && dy > -rad && dy < rad) {
                 e_health[j] -= b_power[i];
+                e_hit_timer[j] = HIT_FLASH_FRAMES;
                 b_on[i] = 0;
                 sfx_hit();
                 game_spawn_particles(b_x[i], b_y[i], 4, 10);

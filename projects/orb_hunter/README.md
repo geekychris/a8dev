@@ -60,12 +60,19 @@ Changed (marked `port:` in the code), for a 1.77 MHz 6502 and cc65:
   opened kept in a list. No 130XE banks needed.
 - at most 4 creatures a room (the original allows 12; no room has more
   than 2); the sparks' random numbers are the SDK's xorshift.
-- creatures are always drawn (the original's frame test hides them: see
-  the Spectrum port's ORIGINAL_BUGS.md) and the hunter flickers while
-  invulnerable.
 - added: a high-score table with initials; game over waits for a new press
   of fire. The item's name shows in the HUD row (the original draws a
-  box), the HUD has energy, rockets and the area (not the map of rooms).
+  box), the HUD has energy, rockets and the score (not the map of rooms);
+  an area's name shows there for a while when the hunter enters it.
+
+The original's own bugs, fixed in `amiga_mcp/examples/orb_hunter` (amiga_games
+#50) and here the same way: the frame counter goes up once a step, so the
+hunter flickers while invulnerable and the creatures are drawn; a creature
+flashes (white) for 8 frames when a shot or bomb hits it; the title and
+the item's message need a new press of fire (the message also ends after
+its 90 frames, game over after 180); the score shows in the HUD and with
+GAME OVER; the citadel's creatures start on its floor (row 12), not inside
+it (row 13).
 
 ## How it uses the Atari
 
@@ -83,9 +90,9 @@ Changed (marked `port:` in the code), for a 1.77 MHz 6502 and cc65:
 
 | | |
 |---|---|
-| `$2000-$8F31` | program: code 22.6K, data 3.8K (the world 1.6K, the tiles, the sprites), BSS |
+| `$2000-$8F74` | program: code 22.8K, data 3.9K (the world 1.6K, the tiles, the sprites), BSS |
 | `$9000-$97FF` | C stack |
-| `$9800-$9A2D` | the shots, bombs, sparks and the opened doors (the PMG area's free pages; `orb_hunter.cfg` adds the segment) |
+| `$9800-$9AD9` | the creatures, the shots, bombs, sparks, the lava list and the opened doors (the PMG area's free pages; `orb_hunter.cfg` adds the segment) |
 | `$9B00-$9FFF` | players and missiles |
 | `$A010-$BC2F` | the room (180 x 40); the title's rows and list while it shows |
 | `$BC40`, `$BD00`, `$BE00` | the HUD row, the display list, the font |

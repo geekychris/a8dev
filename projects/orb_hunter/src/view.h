@@ -13,5 +13,6 @@ void view_message(const char *s);       /* in the HUD row (0: the HUD again) */
 void view_tile_changed(uint8_t tx, uint8_t ty);
 void view_title(const char (*names)[4], const uint32_t *scores);
 void view_title_frame(uint8_t t);
+void dec6(char *d, uint32_t v);         /* six decimal digits */
 
 #endif
