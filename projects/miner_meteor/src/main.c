@@ -84,6 +84,14 @@ static void update_probe(void)
     miner_probe.y = gs.player.b.y;
 }
 
+/* set by a harness log line (debug builds only): writing one can take most
+   of a frame, so the loop gets to the next joystick read only after the
+   frame boundary, runs two logic ticks on that read, and a test bot that
+   sets the keys at every tick falls a tick behind. After a log line the
+   loop waits for the next frame and runs one tick: the logic loses a tick
+   to each log line instead of catching up. */
+static uint8_t log_slow;
+
 static void log_state(void)
 {
     static uint8_t last_mode = 0xFF, last_keys = 0xFF, last_level = 0xFF;
@@ -97,6 +105,9 @@ static void log_state(void)
         a8_log_s(" score=");
         logscore(gs.score);
         LOGNL();
+#ifndef A8_NO_LOG
+        log_slow = 1;
+#endif
         last_mode = gs.mode;
         last_keys = gs.keys_remaining;
         last_level = gs.level_index;
@@ -547,6 +558,7 @@ int main(void)
     for (;;) {
         prev_mode = gs.mode;
         ticks = frame_wait();                 /* fixed timestep: the logic runs `ticks` times */
+        if (log_slow) { frame_wait(); ticks = 1; log_slow = 0; }   /* debug builds: see log_slow */
         if (ticks > 3) ticks = 3;
         if (resync) { ticks = 1; resync = 0; }
         miner_probe.ticks += ticks;
@@ -655,6 +667,9 @@ int main(void)
             logu(" overruns=", miner_probe.overruns);
             logu(" level=", gs.level_index + 1);
             LOGNL();
+#ifndef A8_NO_LOG
+            log_slow = 1;
+#endif
         }
     }
 }

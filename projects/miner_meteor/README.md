@@ -37,7 +37,7 @@ caverns row for row (with the original's three fixed rows) and
 `src/levels.c` its guardians; `src/plat.c`/`src/tmap.c` are the Spectrum
 SDK's helpers holding the original's `update_player` collision code. The
 guardians, scoring, air, collapse timers, conveyors, jump edge-trigger and
-collision snaps are unchanged, and the logic runs at a fixed 50 ticks a
+side and ceiling snaps are unchanged, and the logic runs at a fixed 50 ticks a
 second, as on the Amiga. The proof: the demo (`src/demo.h`, the fastest
 route through each cavern found by the Spectrum port's solver over the same
 `game_tick()`) plays all six caverns here without losing a life.
@@ -47,6 +47,22 @@ ledge (y 32, not inside it at 48), and the walk cycle shows all eight of
 the sheet's frames. With the guardian on the ledge the solver's fastest
 route through Guardian Alley is 259 ticks (211 before), the same count as
 the original's and the ST port's checks.
+
+The landing fix (amiga_games #55) is in too. The original snapped a landing
+to the tile row of the player's old y, so landing at a y that isn't a
+multiple of 16 put the player 16 pixels above the floor, where they dropped
+and snapped back every few ticks (the "bob") until they jumped or walked off.
+`plat_move_y` (`src/plat.c`) now lands on the floor tile itself. Every
+earlier route jumped from the bob's raised spot, and without it two caverns
+can't be finished, so their ledges move too (rows marked "bug in the
+original: unwinnable" in `src/levels.txt`):
+
+- Hazard Bay: the row-10 ledge (columns 5-6) is in row 9, where a jump
+  reaches the row-5 ledge and so the top-left key.
+- Collapsing Attic: the row-8 floor and its key move 6 columns left and the
+  row-3 floor 2 columns left, each within a jump of the floor below.
+
+The solver's fastest routes are now 271, 252, 842, 256, 209 and 305 ticks.
 
 Port changes (marked `port:` in the Spectrum port's source and here):
 
@@ -78,14 +94,16 @@ Port changes (marked `port:` in the Spectrum port's source and here):
 
 ## Memory and speed
 
-- Program, data and variables `$2000-$701C` (20K; the XEX is 18.4K in a
+- Program, data and variables `$2000-$7188` (20K; the XEX is 18.4K in a
   release build). Character set `$A000`, cavern `$A400`, display lists and
   title from `$A700`; players at `$9800`.
 - No 130XE banks: it runs on a 64K 800XL (the test boots it there) and on a
   48K machine with BASIC off.
-- 50.0 fps in the emulator (PAL) over the demo in a release build; 49 fps
-  with the harness log. When a frame is late the logic runs twice, so the
-  game plays at the original's speed.
+- 50.0 fps in the emulator (PAL) over the demo in a release build. When a
+  frame is late the logic runs twice, so the game plays at the original's
+  speed. With the harness log, writing a log line can take most of a frame;
+  the frame after one runs a single tick instead of catching up, so the test
+  bot, which sets the keys before every tick, is never a tick behind.
 
 ## Test
 
@@ -97,4 +115,7 @@ title (recorded, replayed twice with every frame hash checked). Then the
 demo plays all six caverns to the win screen at 45+ fps, and the game boots
 on a 64K 800XL. `.venv/bin/python projects/miner_meteor/test.py --shots`
 rewrites the screenshots and the GIF. (`tools/solve.c`/`solve.sh` are the
-Spectrum port's route search, kept with the routes they made.)
+Spectrum port's route search, kept with the routes they made;
+`tools/solve.sh` also replays every route with `tools/route_check.c`,
+which fails a cavern that isn't cleared, loses a life, or has the player
+standing with no floor under the feet.)
