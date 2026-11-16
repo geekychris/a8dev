@@ -52,7 +52,10 @@ marked `port:` in the source:
   spawn places), an 8-bit LFSR for the per-frame dice (a swooper's turn,
   the flap delays) - the original's LCG needs a 32-bit multiply
 - the lance and the mount's head point the way the knight flies (as the
-  Spectrum port; the original draws them on the left for facing right)
+  Spectrum port; the original drew them on the left for facing right, now
+  fixed there too, amiga_games #51), and an enemy that bounces off a knight
+  at the same height turns to face the way it now flies (the original's
+  fix: it flew backwards until its next re-aim)
 - an enemy at the ceiling is drawn 2 lines low (its rules position is the
   original's)
 - with more than five enemies (wave 4 on) half of them are redrawn each
