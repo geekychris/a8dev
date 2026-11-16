@@ -87,7 +87,7 @@ def sprite(col, row):
     return rows
 
 
-miner = [sprite(c, 2) for c in range(4)]           # walk cycle, facing right
+miner = [sprite(c, 2) for c in range(8)]           # walk cycle (8 frames), facing right
 guards = [[sprite(c, r) for c in (0, 4)] for r in (5, 6, 7)]
 
 out = ["/* made by tools/mkart.py - edit the art there */", "#include <stdint.h>", '#include "art.h"', ""]
@@ -104,7 +104,7 @@ out.append(f"const uint8_t belt_frames[16 * 16] = {{")
 for b in belt_frames:
     out.append("    " + ", ".join(f"0x{v:02X}" for v in b) + ",")
 out.append("};")
-out.append("const uint8_t miner_gfx[4 * 16] = {")
+out.append("const uint8_t miner_gfx[8 * 16] = {")
 for m in miner:
     out.append("    " + ", ".join(f"0x{v:02X}" for v in m) + ",")
 out.append("};")
@@ -121,7 +121,7 @@ for k, n in enumerate(names):
 hdr += [f"#define A_COUNT {len(names)}",
         "extern const uint8_t tile_chars[A_COUNT * 16];",
         "extern const uint8_t belt_frames[16 * 16];      /* 8 frames left belt, 8 right: 16 bytes (2 chars) */",
-        "extern const uint8_t miner_gfx[4 * 16];          /* walk cycle, facing right */",
+        "extern const uint8_t miner_gfx[8 * 16];          /* walk cycle, facing right */",
         "extern const uint8_t guard_gfx[3 * 2 * 16];      /* colour 4, 5, 6 x 2 frames */",
         "#endif"]
 (HERE / "src" / "art.h").write_text("\n".join(hdr) + "\n")
