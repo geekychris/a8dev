@@ -5,6 +5,10 @@ set -euo pipefail
 
 A8_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export A8_ROOT
+# This checkout's a8dev, even when .venv is a symlink to another checkout's venv
+# (worktrees share one): its editable install would otherwise import that
+# checkout's code.
+export PYTHONPATH="$A8_ROOT/tools/a8dev/src${PYTHONPATH:+:$PYTHONPATH}"
 
 # ---- pinned upstream versions (bump deliberately, then re-run setup) ----
 # Toolchain image: cc65 (pinned commit, after V2.19) + MADS (pinned tag).

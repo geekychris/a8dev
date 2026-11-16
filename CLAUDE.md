@@ -23,7 +23,7 @@ AltirraOS ROMs) that we can script deterministically.
 ./a8 selftest               # build + test everything (do this before saying "done");
                             # fails if a test changed a tracked file (write output to build/)
 ./a8 doctor                 # environment problems
-./a8 devbench               # web UI + REST (/api) + MCP over HTTP (/mcp) on :3680
+./a8 devbench               # web UI + REST (/api) + MCP over HTTP (/mcp) on :3680; /arcade = every game, Play here
 ```
 
 Builds run in Docker (image `a8-dev-toolchain:N`, cc65 + MADS, pinned in
@@ -102,3 +102,12 @@ Details: docs/mcp.md, docs/emulator-harness.md.
   struct-of-arrays (`ent_x[i]`), not pointer-to-struct (`e->x` is slow). docs/atari8-gotchas.md.
 - cc65 C costs ~100 cycles a byte in simple loops; inner loops go in asm (see
   projects/banktest/src/page.s) or use memcpy/memset/memcmp. Avoid 16-bit maths per byte.
+
+## DevBench arcade page (/arcade)
+- `arcade.catalog()` feeds `GET /api/arcade`: every project dir, games (arcade.json) marked
+  on_image / built / note / problem, other projects with a reason. A game added since the
+  last `./a8 arcade` shows up at once and plays on its own (`via: "direct"`); Rebuild puts it on the disk.
+- `POST /api/arcade/play {"game", "window": false, "resume": true}` = the page's "Play here".
+- Worktrees: `scripts/lib.sh` puts this checkout's `tools/a8dev/src` on PYTHONPATH, so a
+  symlinked `.venv` (an editable install of another checkout) still runs this checkout's code
+  through `./a8`. Calling `.venv/bin/a8dev` directly does not.

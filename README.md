@@ -17,8 +17,42 @@ Atari ST and the 3DO.
 ./a8 test hello            # headless, deterministic
 ./a8 shot hello -o hello.png
 ./a8 run hello             # in a window
-./a8 devbench              # web UI + REST + MCP over HTTP on :3680
+./a8 devbench --open       # the arcade page + web UI + REST + MCP on :3680
 ```
+
+## Play the games in a browser: the DevBench arcade
+
+```sh
+./a8 setup                 # once
+./a8 devbench --open       # opens http://127.0.0.1:3680/arcade
+```
+
+The arcade page lists every game in `projects/` (each project with an
+`arcade.json`) with its picture, description and controls:
+
+- **Play here** runs the game headless and shows it live in the page. Click the
+  screen and play with the keys of the Atari800 window: arrows = joystick,
+  Option/Alt or Ctrl = fire, F4 START, F3 SELECT, F2 OPTION, letters, Space,
+  Enter = RETURN (the START / SELECT / OPTION / FIRE buttons work too).
+  Pause, Restart, Stop; *Debug it in the DevBench* opens the main page
+  (registers, disassembly, breakpoints, memory, log) on the same session.
+- **Play in a window** opens it in an Atari800 window.
+- A game on the arcade disk (`build/arcade/arcade.atr`) starts from the disk's
+  menu; one that isn't on it yet (added since the last build, or the disk
+  isn't built) starts on its own, built first if need be. **Rebuild**
+  (`./a8 arcade --image-only`) puts every game on the disk; **Open the menu**
+  boots the disk in a window.
+- *Other projects* lists the projects that aren't games (tests, the 3D
+  library demo, the menu itself), with why, and runs them the same way.
+- `/arcade#play=<project>` is a link that starts a game.
+
+The main DevBench page (`/`) is the debugger: pick a project, build, boot,
+step, set breakpoints; its header links to the arcade. The same as REST:
+`GET /api/arcade` (every project, on the disk or not, built or not, any
+problem), `POST /api/arcade/play {"game": "nova_defense", "window": false,
+"resume": true}`, `GET /api/sessions/<pid>/screen.png`,
+`POST /api/sessions/<pid>/cmd/hold {"keys": "UP+FIRE"}` / `release`. A game
+joins the arcade with an `arcade.json` (see `tools/a8dev/src/a8dev/arcade.py`).
 
 ## Games
 

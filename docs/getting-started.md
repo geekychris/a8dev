@@ -71,7 +71,9 @@ Open the repo in `claude`. `.mcp.json` registers the `a8` MCP server
 (`.venv/bin/a8dev-mcp`), so Claude can build, boot the emulator headless,
 press keys, take screenshots, set breakpoints and read memory. Or run
 `./a8 devbench --open` for the web UI, REST API and MCP over HTTP at
-`http://127.0.0.1:3680/mcp`.
+`http://127.0.0.1:3680/mcp`. `--open` lands on the arcade page
+(`/arcade`): every game with Play buttons, played live in the page; see
+"Play the games in a browser" in the README.
 
 ## Running the XEX elsewhere
 

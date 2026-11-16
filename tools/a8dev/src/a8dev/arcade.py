@@ -72,6 +72,104 @@ def games(root: Path | None = None) -> list[dict]:
     return out
 
 
+def _readme_blurb(proj: Path) -> tuple[str | None, str]:
+    """A project's README: its first heading and first paragraph (or None, "")."""
+    f = proj / "README.md"
+    if not f.exists():
+        return None, ""
+    title, para = None, []
+    for line in f.read_text(errors="replace").splitlines():
+        s = line.strip()
+        if title is None and s.startswith("#"):
+            title = s.lstrip("#").strip()
+            continue
+        if s.startswith(("!", "|", "```", "#", "<")) or not s:
+            if para:
+                break
+            continue
+        para.append(s)
+    return title, " ".join(para)[:300]
+
+
+def _other_kind(name: str) -> str:
+    if name == "arcade":
+        return "the arcade's own menu program"
+    if "test" in name:
+        return "a hardware / emulator test"
+    return "a library demo or SDK example"
+
+
+def _program(proj: Path) -> Path | None:
+    x = proj / "build" / f"{proj.name}.xex"
+    if x.exists():
+        return x
+    cands = sorted((proj / "build").glob("*.xex"))
+    return cands[0] if cands else None
+
+
+def catalog(root: Path | None = None) -> dict:
+    """Every project, for the DevBench's arcade page: the games (projects with an
+    arcade.json), each saying whether it is on the built ATR (playable from the
+    menu) or only playable on its own, and the other projects (tests, demos, the
+    menu) with why they aren't in the arcade. Never raises for one bad project:
+    its "problem" says what is wrong."""
+    root = root or ROOT
+    out_dir = root / "build" / "arcade"
+    image = out_dir / "arcade.atr"
+    on_disk = {}
+    if (out_dir / "manifest.json").exists():
+        try:
+            on_disk = {g["project"]: g for g in json.loads((out_dir / "manifest.json").read_text())["games"]}
+        except (json.JSONDecodeError, KeyError, TypeError):
+            on_disk = {}
+    image_time = image.stat().st_mtime if image.exists() else None
+    gs, others = [], []
+    for proj in sorted(p for p in (root / "projects").iterdir() if (p / "Makefile").exists()):
+        prog = _program(proj)
+        shots = sorted((proj / "screenshots").glob("*.png")) if (proj / "screenshots").is_dir() else []
+        meta = proj / "arcade.json"
+        if not meta.exists():
+            title, blurb = _readme_blurb(proj)
+            others.append({"project": proj.name, "title": title or proj.name, "description": blurb,
+                           "machine": "a8", "built": prog is not None, "kind": _other_kind(proj.name),
+                           "reason": f"no arcade.json: {_other_kind(proj.name)}",
+                           "picture": str(shots[0]) if shots else None})
+            continue
+        g = {"project": proj.name, "title": proj.name, "description": "", "controls": "", "machine": "a8",
+             "built": prog is not None, "picture": None, "problem": None}
+        try:
+            j = json.loads(meta.read_text())
+            missing = [k for k in ("title", "ready", "description", "controls") if not j.get(k)]
+            g.update(title=j.get("title") or proj.name, description=j.get("description", ""),
+                     controls=j.get("controls", ""), ready=j.get("ready"))
+            if j.get("picture"):
+                if (proj / j["picture"]).exists():
+                    g["picture"] = str(proj / j["picture"])
+                else:
+                    missing.append(f"picture file {j['picture']}")
+            elif shots:
+                g["picture"] = str(shots[0])
+            if missing:
+                g["problem"] = "arcade.json is missing " + ", ".join(missing)
+        except json.JSONDecodeError as ex:
+            g["problem"] = f"arcade.json: {ex}"
+        b = on_disk.get(proj.name)
+        on_image = bool(b) and image.exists()
+        g["on_image"] = on_image
+        g["index"] = b.get("index") if on_image else None
+        g["stale"] = bool(on_image and image_time and prog and prog.stat().st_mtime > image_time)
+        if not on_image:
+            g["note"] = ("not on the arcade disk yet: it plays on its own; Rebuild adds it to the menu"
+                         if image.exists() else "the arcade disk isn't built: it plays on its own")
+        elif g["stale"]:
+            g["note"] = "built since the arcade disk: the menu has the older build until Rebuild"
+        gs.append(g)
+    gs.sort(key=lambda g: g["title"].lower())
+    return {"image": str(image) if image.exists() else None, "built": image.exists(),
+            "games": gs, "others": others,
+            "missing_from_image": [g["project"] for g in gs if not g["on_image"]]}
+
+
 def _make(project_dir: Path, log=print):
     r = subprocess.run([str(ROOT / "bin" / "a8-make"), "-C", str(project_dir)],
                        capture_output=True, text=True)
@@ -269,5 +367,5 @@ def menu_choose(emu, game: dict, count: int, max_frames: int = 3000, sel: int | 
     return emu.run_until(game["ready"], max_frames)
 
 
-__all__ = ["ArcadeError", "OUT", "build", "games", "manifest", "find_game", "menu_choose",
+__all__ = ["ArcadeError", "OUT", "build", "catalog", "games", "manifest", "find_game", "menu_choose",
            "menu_ready", "picture", "read_directory"]
